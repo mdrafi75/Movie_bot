@@ -1,14 +1,17 @@
 services:
   - type: web
-    name: telegram-bot
+    name: movie-bot-web
     env: python
-    region: singapore
     plan: free
-    python:
-      version: "3.11.9"
+    region: singapore
+    pythonVersion: "3.11.9"
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
     envVars:
+      - key: PORT
+        value: "8080"
+      - key: PYTHON_VERSION
+        value: "3.11.9"
       - key: BOT_TOKEN
         sync: false
     healthCheckPath: /health

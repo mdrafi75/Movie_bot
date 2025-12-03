@@ -1,3 +1,5 @@
+from keep_alive import keep_alive
+keep_alive()
 import sys
 from blogger_api import BloggerAPI
 from cache_manager import CacheManager
