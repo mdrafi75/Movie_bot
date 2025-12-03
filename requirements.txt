@@ -4,3 +4,4 @@ beautifulsoup4==4.12.2
 fuzzywuzzy==0.18.0
 rapidfuzz==3.6.1
 python-dotenv==1.0.0
+imghdr==1.0.0
