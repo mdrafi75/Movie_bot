@@ -2,13 +2,14 @@ services:
   - type: web
     name: telegram-bot
     env: python
+    region: singapore
     plan: free
-    pythonVersion: "3.11.9"  # ✅ এখানে ভার্সন স্পেসিফাই করুন
+    python:
+      version: "3.11.9"
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
     envVars:
       - key: BOT_TOKEN
         sync: false
-      - key: PYTHON_VERSION
-        value: "3.11.9"
     healthCheckPath: /health
+    autoDeploy: true
