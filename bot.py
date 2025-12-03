@@ -1,3 +1,8 @@
+import sys
+if sys.version_info >= (3, 13):
+    print("❌ Python 3.13+ is not supported. Please use Python 3.11.9")
+    sys.exit(1)
+    
 from blogger_api import BloggerAPI
 from cache_manager import CacheManager
 from scraper import MovieScraper

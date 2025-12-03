@@ -4,9 +4,21 @@ services:
     env: python
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
+    pythonVersion: 3.11.9
     envVars:
       - key: BOT_TOKEN
         sync: false
-      - key: PYTHON_VERSION
-        value: 3.11.9  # ✅ এই লাইন নিশ্চিত করুন
-    pythonVersion: 3.11.9  # ✅ এই লাইন যোগ করুন
+      - key: GROUP_ID
+        sync: false
+      - key: CHANNEL_ID
+        sync: false
+      - key: BLOGGER_BLOG_ID_1
+        sync: false
+      - key: BLOGGER_API_KEY_1
+        sync: false
+      - key: BLOGGER_BLOG_ID_2
+        sync: false
+      - key: BLOGGER_API_KEY_2
+        sync: false
+      - key: REQUEST_NOTIFICATION_CHANNEL
+        sync: false
