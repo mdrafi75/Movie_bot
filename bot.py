@@ -1354,88 +1354,133 @@ async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAUL
 
 
 async def refresh_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ম্যানুয়াল রিফ্রেশ কমান্ড"""
+    """ম্যানুয়াল রিফ্রেশ কমান্ড - FIXED VERSION"""
     try:
         user = update.message.from_user
         
         # এডমিন চেক (আপনার আইডি)
-        is_admin = user.id in [6723820690]  # আপনার আইডি
+        is_admin = user.id in [6723820690]
         
         if not is_admin:
             await update.message.reply_text("⛔ শুধুমাত্র এডমিন")
             return
         
+        # ইউজারকে জানানো
         await update.message.reply_text("🔄 ব্লগার চেক করা হচ্ছে...")
         
-        # ব্লগার থেকে নতুন মুভি আনবে
+        # ১. ব্লগার থেকে সব মুভি আনব
+        print(f"🔍 {user.first_name} রিফ্রেশ কমান্ড দিয়েছেন")
         new_movies_data = blogger_api.get_all_posts_from_all_blogs()
         
         if not new_movies_data:
-            # শুধু এডমিনকে প্রাইভেটে জানাবে
-            await context.bot.send_message(
-                chat_id=user.id,  # ✅ এডমিনের প্রাইভেট ইনবক্সে
-                text="❌ ব্লগার থেকে কোনো মুভি লোড হয়নি"
+            await update.message.reply_text(
+                "❌ ব্লগার থেকে কোনো মুভি লোড হয়নি\n"
+                "⚠️ ইন্টারনেট কানেকশন বা API সমস্যা"
             )
             return
         
-        # নতুন মুভি ফিল্টার
+        print(f"📥 ব্লগারে মোট মুভি: {len(new_movies_data)} টি")
+        
+        # ২. বর্তমান ক্যাশে মুভি
         current_movies = cache_manager.get_all_movies()
-        from auto_refresher import AutoRefresher
-        refresher = AutoRefresher(blogger_api, cache_manager, search_engine)
-        new_movies, updated_links = refresher.filter_new_movies(new_movies_data, current_movies)
+        current_count = len(current_movies)
+        print(f"📊 বর্তমান ক্যাশে মুভি: {current_count} টি")
         
-        if not new_movies and not updated_links:
-            # শুধু এডমিনকে প্রাইভেটে জানাবে
-            await context.bot.send_message(
-                chat_id=user.id,  # ✅ এডমিনের প্রাইভেট ইনবক্সে
-                text=f"ℹ️ কোনো নতুন মুভি বা লিংক আপডেট পাওয়া যায়নি।\n\n"
-                     f"মুভি সংখ্যা: {cache_manager.get_movie_count()} টি"
+        # ৩. নতুন মুভি ফিল্টার (সরাসরি করব, AutoRefresher ব্যবহার না করে)
+        new_movies = []
+        updated_links = []
+        
+        # Current movies থেকে keys সেট তৈরি করব
+        current_keys = set()
+        for movie in current_movies:
+            title = movie.get('title', '').lower().strip()
+            year = movie.get('year', '').strip()
+            quality = movie.get('quality', 'HD').strip()
+            blog_source = movie.get('blog_source', 'unknown').strip()
+            key = f"{title}|{year}|{quality}|{blog_source}"
+            current_keys.add(key)
+        
+        # নতুন মুভি চেক করব
+        for new_movie in new_movies_data:
+            title = new_movie.get('title', '').lower().strip()
+            year = new_movie.get('year', '').strip()
+            quality = new_movie.get('quality', 'HD').strip()
+            blog_source = new_movie.get('blog_source', 'unknown').strip()
+            new_key = f"{title}|{year}|{quality}|{blog_source}"
+            
+            if new_key not in current_keys:
+                # নতুন মুভি
+                new_movies.append(new_movie)
+                print(f"   🆕 নতুন: {title} ({year})")
+        
+        # ৪. ফলাফল প্রসেসিং
+        if not new_movies:
+            await update.message.reply_text(
+                f"ℹ️ কোনো নতুন মুভি পাওয়া যায়নি\n\n"
+                f"📊 বর্তমান ক্যাশে মুভি: {current_count} টি\n"
+                f"📥 ব্লগারে মোট মুভি: {len(new_movies_data)} টি\n\n"
+                f"✅ সব মুভি ইতিমধ্যে ক্যাশে আছে"
             )
             return
         
-        success_message = f"✅ রিফ্রেশ সম্পূর্ণ!\n\n"
+        # ৫. নতুন মুভি ক্যাশে সেভ করব
+        print(f"✅ {len(new_movies)} টি নতুন মুভি পাওয়া গেছে, ক্যাশে সেভ করছি...")
+        cache_manager.update_movies(new_movies)
         
-        if new_movies:
-            # নতুন মুভি ক্যাশে সেভ করবে
-            cache_manager.update_movies(new_movies)
-            
-            # চ্যানেলে পোস্ট করবে
+        # ৬. চ্যানেলে পোস্ট করব
+        success_count = 0
+        try:
             from channel_poster import ChannelPoster
-            channel_poster_instance = ChannelPoster(cache_manager)
-            success_count = await channel_poster_instance.post_multiple_movies(new_movies, context.bot)
+            channel_poster = ChannelPoster(cache_manager)
             
-            success_message += f"🎬 নতুন মুভি: {len(new_movies)} টি\n"
-            success_message += f"📢 চ্যানেলে পোস্ট: {success_count} টি\n"
-            
-            for movie in new_movies[:2]:  # প্রথম ২টি
-                success_message += f"   • {movie['title']}\n"
-            if len(new_movies) > 2:
-                success_message += f"   ... এবং আরও {len(new_movies) - 2} টি\n"
+            # প্রথম ১০টি মুভি পোস্ট করব (একসাথে অনেকগুলি না)
+            for movie in new_movies[:10]:
+                try:
+                    success = await channel_poster.post_movie_to_channel(movie, context.bot)
+                    if success:
+                        success_count += 1
+                        print(f"   📢 চ্যানেলে পোস্ট করা হয়েছে: {movie['title']}")
+                        # প্রতি মুভি পোস্ট করার পর ২ সেকেন্ড অপেক্ষা
+                        import asyncio
+                        await asyncio.sleep(2)
+                except Exception as e:
+                    print(f"   ❌ পোস্ট এরর: {e}")
+                    continue
+        except Exception as e:
+            print(f"❌ চ্যানেল পোস্টার এরর: {e}")
+            success_count = 0
         
-        if updated_links:
-            success_message += f"\n🔗 লিংক আপডেট: {len(updated_links)} টি\n"
-            
-            # চ্যানেল পোস্ট আপডেট করবে
-            from channel_poster import ChannelPoster
-            channel_poster_instance = ChannelPoster(cache_manager)
-            
-            updated_count = 0
-            for updated in updated_links:
-                success = await channel_poster_instance.update_movie_post(updated['title'], context.bot)
-                if success:
-                    updated_count += 1
-                    success_message += f"   • {updated['title']} ✅\n"
-            
-            success_message += f"   📢 চ্যানেল আপডেট: {updated_count}/{len(updated_links)} টি\n"
+        # ৭. ইউজারকে রিপ্লাই
+        success_message = f"""
+✅ **রিফ্রেশ সম্পূর্ণ!**
+
+📊 **ফলাফল:**
+• ব্লগারে মুভি: {len(new_movies_data)} টি
+• নতুন পাওয়া গেছে: {len(new_movies)} টি
+• ক্যাশে সেভ করা হয়েছে: {len(new_movies)} টি
+• চ্যানেলে পোস্ট করা হয়েছে: {success_count} টি
+
+📈 **আপডেট পর:**
+• মোট মুভি: {cache_manager.get_movie_count()} টি
+
+🎬 **প্রথম ৩টি নতুন মুভি:**
+"""
         
-        success_message += f"\n📊 মোট মুভি: {cache_manager.get_movie_count()} টি"
+        for i, movie in enumerate(new_movies[:3], 1):
+            success_message += f"{i}. {movie['title']}\n"
         
-        await update.message.reply_text(success_message)
-        print(f"✅ ম্যানুয়াল রিফ্রেশ সম্পূর্ণ: {len(new_movies)} টি নতুন, {len(updated_links)} টি আপডেট")
+        if len(new_movies) > 3:
+            success_message += f"... এবং আরও {len(new_movies) - 3} টি\n"
+        
+        success_message += "\n📢 চ্যানেলে নতুন মুভি পোস্ট করা হয়েছে!"
+        
+        await update.message.reply_text(success_message, parse_mode='Markdown')
+        
+        print(f"🎯 রিফ্রেশ সম্পূর্ণ: {len(new_movies)} নতুন, {success_count} চ্যানেলে পোস্ট")
         
     except Exception as e:
-        await update.message.reply_text(f"❌ রিফ্রেশ করতে সমস্যা: {e}")
         print(f"❌ রিফ্রেশ কমান্ড এরর: {e}")
+        await update.message.reply_text(f"❌ রিফ্রেশ করতে সমস্যা: {str(e)[:200]}")
 
 
 async def update_cache_directly(request_data, bot):

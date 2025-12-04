@@ -109,45 +109,71 @@ class AutoRefresher:
         print(f"📈 আপডেট后 ক্যাশে মুভি: {updated_count} টি")
     
     def filter_new_movies(self, new_movies_data, current_movies):
-        """স্মার্ট ডুপ্লিকেট চেক + লিংক আপডেট ডিটেক্ট করবে"""
+        """স্মার্ট ডুপ্লিকেট চেক + লিংক আপডেট ডিটেক্ট করবে - FIXED VERSION"""
         new_movies = []
         updated_links = []
         
-        # Current movies-কে dict-এ কনভার্ট করবে (title->movie)
-        current_movies_dict = {}
-        for movie in current_movies:
-            current_movies_dict[movie['title'].lower()] = movie
+        # ১. প্রথমে current movies থেকে UNIQUE KEY তৈরি করব
+        # KEY ফরম্যাট: "title|year|quality|blog_source"
+        current_movies_keys = set()
         
-        for new_movie in new_movies_data:
-            title_lower = new_movie['title'].lower()
+        for movie in current_movies:
+            title = movie.get('title', '').lower().strip()
+            year = movie.get('year', '').strip()
+            quality = movie.get('quality', 'HD').strip()
+            blog_source = movie.get('blog_source', 'unknown').strip()
             
-            if title_lower not in current_movies_dict:
+            # Unique key তৈরি
+            key = f"{title}|{year}|{quality}|{blog_source}"
+            current_movies_keys.add(key)
+        
+        print(f"🔍 ডিবাগ: Current movies keys: {len(current_movies_keys)} টি")
+        
+        # ২. নতুন মুভি চেক করব
+        for new_movie in new_movies_data:
+            title = new_movie.get('title', '').lower().strip()
+            year = new_movie.get('year', '').strip()
+            quality = new_movie.get('quality', 'HD').strip()
+            blog_source = new_movie.get('blog_source', 'unknown').strip()
+            
+            # নতুন মুভির unique key
+            new_key = f"{title}|{year}|{quality}|{blog_source}"
+            
+            # ৩. চেক করব এই মুভি ক্যাশে আছে কিনা
+            if new_key not in current_movies_keys:
                 # সম্পূর্ণ নতুন মুভি
                 new_movies.append(new_movie)
-                print(f"   🆕 নতুন মুভি: {new_movie['title']}")
+                print(f"   🆕 নতুন মুভি: {title} ({year}) - {quality}")
             else:
-                # Existing মুভি - লিংক আপডেট চেক করবে
-                existing_movie = current_movies_dict[title_lower]
-                new_link = new_movie.get('detail_link')
-                old_link = existing_movie.get('detail_link')
+                # Existing মুভি - লিংক আপডেট চেক করব
+                # ক্যাশে থেকে এই মুভি খুঁজব
+                existing_movie = None
+                for movie in current_movies:
+                    if (movie.get('title', '').lower().strip() == title and 
+                        movie.get('year', '').strip() == year and
+                        movie.get('blog_source', 'unknown').strip() == blog_source):
+                        existing_movie = movie
+                        break
                 
-                if new_link and (not old_link or new_link != old_link):
-                    # লিংক আপডেট হয়েছে
-                    updated_links.append({
-                        'title': new_movie['title'],
-                        'old_link': old_link,
-                        'new_link': new_link,
-                        'movie_data': new_movie
-                    })
-                    print(f"   🔄 লিংক আপডেট: {new_movie['title']}")
-                    print(f"      পুরানো: {old_link[:50] if old_link else 'NONE'}")
-                    print(f"      নতুন: {new_link[:50]}")
+                if existing_movie:
+                    new_link = new_movie.get('detail_link')
+                    old_link = existing_movie.get('detail_link')
                     
-                    # ক্যাশে আপডেট করবে
-                    self.cache_manager.update_movie_link(new_movie['title'], new_link)
+                    if new_link and (not old_link or new_link != old_link):
+                        # লিংক আপডেট হয়েছে
+                        updated_links.append({
+                            'title': new_movie['title'],
+                            'old_link': old_link,
+                            'new_link': new_link,
+                            'movie_data': new_movie
+                        })
+                        print(f"   🔄 লিংক আপডেট: {new_movie['title']}")
+                        
+                        # ক্যাশে আপডেট করব
+                        self.cache_manager.update_movie_link(new_movie['title'], new_link)
         
-        if updated_links:
-            print(f"✅ {len(updated_links)} টি মুভির লিংক আপডেট হয়েছে")
+        print(f"✅ নতুন মুভি পাওয়া গেছে: {len(new_movies)} টি")
+        print(f"✅ লিংক আপডেট: {len(updated_links)} টি")
         
         return new_movies, updated_links
     
