@@ -395,6 +395,64 @@ class SearchEngine:
                 print(f"      ... এবং আরও {len(series_movies)-3} টি")
         
         return multi_part_series
+    
+
+    # search_engine.py - calculate_match_score() ফাংশনের শুরুতে যোগ করুন:
+    def calculate_match_score(self, movie, query):
+        """ম্যাচ স্কোর ক্যালকুলেট করবে - DEBUG VERSION"""
+        
+        # ডিবাগ লগ
+        query_lower = query.strip().lower()
+        title_lower = movie.get('title', '').lower().strip()
+        
+        print(f"\n🔍 [DEBUG] Matching: '{query_lower}' vs '{title_lower}'")
+        
+        # ১. এক্সাক্ট ম্যাচ
+        if query_lower == title_lower:
+            print(f"   ✅ EXACT MATCH: 100%")
+            return 100
+        
+        # ২. একটি অন্যটির মধ্যে আছে
+        if query_lower in title_lower:
+            print(f"   ✅ QUERY IN TITLE: 95% (query in title)")
+            return 95
+        if title_lower in query_lower:
+            print(f"   ✅ TITLE IN QUERY: 95% (title in query)")
+            return 95
+        
+        # ৩. শব্দ মিল চেক
+        query_words = set(query_lower.split())
+        title_words = set(title_lower.split())
+        common_words = query_words.intersection(title_words)
+        
+        if common_words:
+            print(f"   ✅ COMMON WORDS: {common_words} = 85%")
+            return 85
+        
+        # ৪. ফাজি রেশিও (পুরানো সিস্টেম)
+        if hasattr(self, 'fuzzy_ratio'):
+            fuzzy_score = self.fuzzy_ratio(query_lower, title_lower)
+            print(f"   🔄 FUZZY RATIO: {fuzzy_score}%")
+            
+            # থ্রেশহোল্ড ডিসিশন
+            if fuzzy_score >= 70:
+                print(f"   🎯 FUZZY MATCH: {fuzzy_score}% (>=70)")
+                return fuzzy_score
+        else:
+            print(f"   ⚠️ No fuzzy_ratio method found")
+        
+        # ৫. difflib similarity
+        try:
+            from difflib import SequenceMatcher
+            similarity = SequenceMatcher(None, query_lower, title_lower).ratio()
+            difflib_score = int(similarity * 100)
+            print(f"   🔄 DIFflib SIMILARITY: {difflib_score}%")
+            return difflib_score
+        except Exception as e:
+            print(f"   ❌ DIFflib ERROR: {e}")
+        
+        print(f"   ❌ NO MATCH FOUND: 0%")
+        return 0
 
 # টেস্ট করার জন্য
 if __name__ == "__main__":

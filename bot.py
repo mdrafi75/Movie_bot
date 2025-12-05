@@ -1765,6 +1765,134 @@ async def force_refresh_command(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(f"❌ কমান্ড এরর: {str(e)[:200]}")
 
 
+async def handle_auto_search(update: Update, query: str):
+    """ইউজারের সরাসরি মুভি কোয়েরি হ্যান্ডল করবে - DEBUG"""
+    try:
+        print(f"\n" + "="*60)
+        print(f"🔍 AUTO-SEARCH TRIGGERED")
+        print(f"📝 Query: '{query}'")
+        print(f"👤 User: {update.message.from_user.first_name}")
+        print(f"🏷️ Chat: {update.message.chat.type}")
+        print("="*60)
+        
+        # ১. এক্সাক্ট সার্চ
+        results = search_engine.search_movies(query)
+        
+        print(f"📊 Search Results: {len(results)} movies found")
+        
+        if not results:
+            print(f"❌ NO RESULTS - Calling handle_no_results()")
+            await handle_no_results(update, query)
+            return
+        
+        best_match = results[0]
+        match_score = search_engine.calculate_match_score(best_match, query)
+        
+        print(f"🎯 Best Match: '{best_match['title']}'")
+        print(f"📈 Match Score: {match_score}%")
+        print(f"📊 All Results Count: {len(results)}")
+        
+        # ২. ম্যাচ কোয়ালিটি based action
+        print(f"\n🤔 DECISION MAKING:")
+        print(f"   • Score >= 90: {match_score >= 90}")
+        print(f"   • Score >= 70: {match_score >= 70}") 
+        print(f"   • Score >= 55: {match_score >= 55}")
+        
+        if match_score >= 90:
+            print(f"   ✅ DIRECT RESULT (Score: {match_score} >= 90)")
+            if len(results) > 1:
+                await update.message.reply_text(
+                    f"🎬 <b>'{query}' - পাওয়া ভার্সনগুলো ({len(results)} টি):</b>",
+                    parse_mode='HTML'
+                )
+                for movie in results[:3]:
+                    await send_movie_result_with_image(update, movie)
+                if len(results) > 3:
+                    await update.message.reply_text(
+                        f"📦 <i>এবং আরও {len(results) - 3} টি মুভি...</i>",
+                        parse_mode='HTML'
+                    )
+            else:
+                await send_direct_result(update, best_match)
+        
+        elif match_score >= 70:
+            print(f"   ✅ CONFIRMATION ASK (Score: {match_score} >= 70)")
+            await ask_confirmation(update, query, best_match)
+        
+        elif match_score >= 55:
+            print(f"   ✅ LOW CONFIDENCE SUGGESTION (Score: {match_score} >= 55)")
+            await show_search_suggestions(update, query, results[:3])
+        
+        else:
+            print(f"   ❌ VERY LOW SCORE: {match_score}% - Showing no results")
+            await handle_no_results(update, query)
+        
+        print(f"\n✅ AUTO-SEARCH COMPLETE")
+        print("="*60 + "\n")
+            
+    except Exception as e:
+        print(f"\n❌ AUTO-SEARCH ERROR: {e}")
+        import traceback
+        print(f"🔍 ERROR DETAILS: {traceback.format_exc()}")
+        print("="*60 + "\n")
+        
+        error_message = f"""
+⚠️ <b>'{query}' নামে সার্চ করতে সমস্যা হচ্ছে</b>
+"""
+        await update.message.reply_text(
+            error_message, 
+            parse_mode='HTML',
+            reply_to_message_id=update.message.message_id,
+            disable_web_page_preview=True
+        )
+
+        # bot.py-তে CommandHandler যোগ করুন:
+    async def debug_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """ডিবাগ ম্যাচ স্কোর"""
+        if not context.args:
+            await update.message.reply_text("Usage: /debugmatch 'query' 'expected_movie'")
+            return
+        
+        query = context.args[0]
+        expected = context.args[1] if len(context.args) > 1 else None
+        
+        print(f"\n🔬 DEBUG MATCH COMMAND")
+        print(f"   Query: '{query}'")
+        print(f"   Expected: '{expected}'")
+        
+        # সব মুভি থেকে খুঁজবে
+        movies = cache_manager.get_all_movies()
+        
+        debug_results = []
+        
+        for movie in movies:
+            title = movie.get('title', '').lower()
+            score = search_engine.calculate_match_score(movie, query)
+            
+            if expected and expected.lower() in title:
+                print(f"   🔍 FOUND EXPECTED: '{movie['title']}' = {score}%")
+            
+            if score > 40:  # 40% এর উপরে স্কোর
+                debug_results.append((movie['title'], score))
+        
+        # টপ ৫ রেজাল্ট দেখাবে
+        debug_results.sort(key=lambda x: x[1], reverse=True)
+        
+        response = f"🔬 **ডিবাগ ম্যাচ রেজাল্ট:**\n"
+        response += f"📝 Query: `{query}`\n"
+        response += f"📊 Total Movies: {len(movies)}\n"
+        response += f"🎯 Matches Found: {len(debug_results)}\n\n"
+        
+        for i, (title, score) in enumerate(debug_results[:5], 1):
+            response += f"{i}. `{title}` = {score}%\n"
+        
+        if not debug_results:
+            response += "\n❌ **40%+ স্কোরের কোনো মুভি নেই**\n"
+        
+        await update.message.reply_text(response, parse_mode='Markdown')
+        
+        print(f"✅ DEBUG COMPLETE - Found {len(debug_results)} matches")
+
 
 # মেইন ফাংশন
 def main():
@@ -1794,6 +1922,9 @@ def main():
     app.add_handler(CommandHandler("requests", admin_requests_dashboard))
     app.add_handler(CommandHandler("cleanup", cleanup_command))
     app.add_handler(CommandHandler("force_refresh", force_refresh_command))
+
+    # মেইন ফাংশনে হ্যান্ডলার যোগ করুন:
+    app.add_handler(CommandHandler("debugmatch", debug_match))
     
     # ক্যালব্যাক হ্যান্ডলার
     app.add_handler(CallbackQueryHandler(button_callback_handler))
