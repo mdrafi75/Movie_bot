@@ -279,7 +279,7 @@ async def handle_auto_search(update: Update, query: str):
                 # শুধু ১টি থাকলে
                 await send_direct_result(update, best_match)
         
-        elif match_score >= 60:  # পার্শিয়াল ম্যাচ - কনফার্মেশন
+        elif match_score >= 55:  # পার্শিয়াল ম্যাচ - কনফার্মেশন
             await ask_confirmation(update, query, best_match)
         
         else:  # লো কনফিডেন্স - সাজেশন

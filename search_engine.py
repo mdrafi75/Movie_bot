@@ -272,8 +272,8 @@ class SearchEngine:
             
             best_score = max(title_score, bangla_score)
             
-            # 60-95% ম্যাচ (সম্পূর্ণ ম্যাচ না)
-            if 60 <= best_score < 95:
+            # 40-95% ম্যাচ (সম্পূর্ণ ম্যাচ না)
+            if 40 <= best_score < 95:
                 similar_movies.append(movie)
         
         # সর্বোচ্চ ৩টি সিমিলার মুভি রিটার্ন করবে
