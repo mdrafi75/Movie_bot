@@ -399,59 +399,62 @@ class SearchEngine:
 
     # search_engine.py - calculate_match_score() ফাংশনের শুরুতে যোগ করুন:
     def calculate_match_score(self, movie, query):
-        """ম্যাচ স্কোর ক্যালকুলেট করবে - DEBUG VERSION"""
+        """ম্যাচ স্কোর ক্যালকুলেট করবে - FIXED FOR RENDER.COM"""
         
-        # ডিবাগ লগ
         query_lower = query.strip().lower()
         title_lower = movie.get('title', '').lower().strip()
         
-        print(f"\n🔍 [DEBUG] Matching: '{query_lower}' vs '{title_lower}'")
+        print(f"🔍 [RENDER] Matching: '{query_lower}' vs '{title_lower}'")
         
-        # ১. এক্সাক্ট ম্যাচ
+        # ১. এক্সাক্ট ম্যাচ (100%)
         if query_lower == title_lower:
-            print(f"   ✅ EXACT MATCH: 100%")
+            print("   ✅ EXACT MATCH: 100%")
             return 100
         
-        # ২. একটি অন্যটির মধ্যে আছে
+        # ২. একটি অন্যটির মধ্যে আছে (95%)
         if query_lower in title_lower:
-            print(f"   ✅ QUERY IN TITLE: 95% (query in title)")
-            return 95
-        if title_lower in query_lower:
-            print(f"   ✅ TITLE IN QUERY: 95% (title in query)")
+            print(f"   ✅ QUERY IN TITLE: '{query_lower}' in '{title_lower}' = 95%")
             return 95
         
-        # ৩. শব্দ মিল চেক
+        if title_lower in query_lower:
+            print(f"   ✅ TITLE IN QUERY: '{title_lower}' in '{query_lower}' = 95%")
+            return 95
+        
+        # ৩. প্রথম ৪ অক্ষর মিল (85%) - Render.com-এর জন্য
+        if len(query_lower) >= 4 and len(title_lower) >= 4:
+            if query_lower[:4] == title_lower[:4]:
+                print(f"   ✅ FIRST 4 CHARS: '{query_lower[:4]}' = '{title_lower[:4]}' = 85%")
+                return 85
+        
+        # ৪. প্রথম ৩ অক্ষর মিল (75%) - Render.com-এর জন্য
+        if len(query_lower) >= 3 and len(title_lower) >= 3:
+            if query_lower[:3] == title_lower[:3]:
+                print(f"   ✅ FIRST 3 CHARS: '{query_lower[:3]}' = '{title_lower[:3]}' = 75%")
+                return 75
+        
+        # ৫. Word-based matching (65%)
         query_words = set(query_lower.split())
         title_words = set(title_lower.split())
         common_words = query_words.intersection(title_words)
         
         if common_words:
-            print(f"   ✅ COMMON WORDS: {common_words} = 85%")
-            return 85
+            print(f"   ✅ COMMON WORDS: {common_words} = 65%")
+            return 65
         
-        # ৪. ফাজি রেশিও (পুরানো সিস্টেম)
-        if hasattr(self, 'fuzzy_ratio'):
-            fuzzy_score = self.fuzzy_ratio(query_lower, title_lower)
-            print(f"   🔄 FUZZY RATIO: {fuzzy_score}%")
-            
-            # থ্রেশহোল্ড ডিসিশন
-            if fuzzy_score >= 70:
-                print(f"   🎯 FUZZY MATCH: {fuzzy_score}% (>=70)")
-                return fuzzy_score
-        else:
-            print(f"   ⚠️ No fuzzy_ratio method found")
-        
-        # ৫. difflib similarity
+        # ৬. difflib similarity (0-60%)
         try:
             from difflib import SequenceMatcher
             similarity = SequenceMatcher(None, query_lower, title_lower).ratio()
             difflib_score = int(similarity * 100)
-            print(f"   🔄 DIFflib SIMILARITY: {difflib_score}%")
-            return difflib_score
-        except Exception as e:
-            print(f"   ❌ DIFflib ERROR: {e}")
+            
+            # Render.com-এ কম স্কেলিং
+            final_score = min(60, difflib_score)  # Max 60% for difflib
+            print(f"   🔄 DIFflib: {difflib_score}% → {final_score}%")
+            return final_score
+        except:
+            print("   ❌ DIFflib ERROR")
         
-        print(f"   ❌ NO MATCH FOUND: 0%")
+        print("   ❌ NO MATCH: 0%")
         return 0
 
 # টেস্ট করার জন্য

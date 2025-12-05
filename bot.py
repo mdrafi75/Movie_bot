@@ -1847,51 +1847,36 @@ async def handle_auto_search(update: Update, query: str):
         )
 
         # bot.py-তে CommandHandler যোগ করুন:
-    async def debug_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """ডিবাগ ম্যাচ স্কোর"""
-        if not context.args:
-            await update.message.reply_text("Usage: /debugmatch 'query' 'expected_movie'")
-            return
-        
-        query = context.args[0]
-        expected = context.args[1] if len(context.args) > 1 else None
-        
-        print(f"\n🔬 DEBUG MATCH COMMAND")
-        print(f"   Query: '{query}'")
-        print(f"   Expected: '{expected}'")
-        
-        # সব মুভি থেকে খুঁজবে
-        movies = cache_manager.get_all_movies()
-        
-        debug_results = []
-        
-        for movie in movies:
-            title = movie.get('title', '').lower()
+
+# bot.py-তে এই ফাংশনটি যোগ করুন (অন্য ফাংশনের পরে):
+async def test_score(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """সরল স্কোর টেস্ট কমান্ড"""
+    if not context.args:
+        await update.message.reply_text("Use: /testscore movie_name")
+        return
+    
+    query = ' '.join(context.args)
+    
+    # শুধু প্রথম ২০টি মুভি চেক করবে
+    movies = cache_manager.get_all_movies()[:20]
+    
+    response = f"🔍 **টেস্ট স্কোর:** `{query}`\n\n"
+    
+    for movie in movies:
+        score = search_engine.calculate_match_score(movie, query)
+        if score > 50:  # শুধু ৫০%+ স্কোর দেখাবে
+            response += f"• `{movie['title']}` = {score}%\n"
+    
+    if "= %" not in response:  # যদি কোনো ম্যাচ না থাকে
+        response += "❌ ৫০%+ স্কোরের কোনো মুভি নেই\n"
+        response += f"\n🔍 প্রথম ৫টি মুভি:\n"
+        for movie in movies[:5]:
             score = search_engine.calculate_match_score(movie, query)
-            
-            if expected and expected.lower() in title:
-                print(f"   🔍 FOUND EXPECTED: '{movie['title']}' = {score}%")
-            
-            if score > 40:  # 40% এর উপরে স্কোর
-                debug_results.append((movie['title'], score))
-        
-        # টপ ৫ রেজাল্ট দেখাবে
-        debug_results.sort(key=lambda x: x[1], reverse=True)
-        
-        response = f"🔬 **ডিবাগ ম্যাচ রেজাল্ট:**\n"
-        response += f"📝 Query: `{query}`\n"
-        response += f"📊 Total Movies: {len(movies)}\n"
-        response += f"🎯 Matches Found: {len(debug_results)}\n\n"
-        
-        for i, (title, score) in enumerate(debug_results[:5], 1):
-            response += f"{i}. `{title}` = {score}%\n"
-        
-        if not debug_results:
-            response += "\n❌ **40%+ স্কোরের কোনো মুভি নেই**\n"
-        
-        await update.message.reply_text(response, parse_mode='Markdown')
-        
-        print(f"✅ DEBUG COMPLETE - Found {len(debug_results)} matches")
+            response += f"• `{movie['title']}` = {score}%\n"
+    
+    await update.message.reply_text(response, parse_mode='Markdown')
+
+
 
 
 # মেইন ফাংশন
@@ -1923,8 +1908,8 @@ def main():
     app.add_handler(CommandHandler("cleanup", cleanup_command))
     app.add_handler(CommandHandler("force_refresh", force_refresh_command))
 
-    # মেইন ফাংশনে হ্যান্ডলার যোগ করুন:
-    app.add_handler(CommandHandler("debugmatch", debug_match))
+    # main() ফাংশনে এই লাইন যোগ করুন (অন্য CommandHandler-দের পরে):
+    app.add_handler(CommandHandler("testscore", test_score))
     
     # ক্যালব্যাক হ্যান্ডলার
     app.add_handler(CallbackQueryHandler(button_callback_handler))
