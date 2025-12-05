@@ -52,6 +52,27 @@ class SearchEngine:
     
     def calculate_match_score(self, movie, query):
         """ম্যাচ স্কোর ক্যালকুলেট করবে - বাংলা এবং ইংলিশ উভয় ভাষায়"""
+        
+        # ✅ NEW: আগে এক্সাক্ট ম্যাচ চেক করব
+        query_lower = query.lower().strip()
+        title_lower = movie.get('title', '').lower().strip()
+        
+        # 1. EXACT MATCH (মূল সমস্যা এখানে)
+        if query_lower == title_lower:
+            return 100  # ✅ সরাসরি 100%
+        
+        # 2. QUERY টাইটেলে আছে (বা উল্টো)
+        if query_lower in title_lower or title_lower in query_lower:
+            return 95  # ✅ 95%
+        
+        # 3. Word-by-word এক্সাক্ট ম্যাচ
+        query_words = set(query_lower.split())
+        title_words = set(title_lower.split())
+        
+        if query_words == title_words:
+            return 90  # ✅ 90%
+        
+        # 4. তারপর আগের লজিক
         scores = []
         
         # ইংলিশ টাইটেলে সার্চ
@@ -83,21 +104,22 @@ class SearchEngine:
             # Alternative fuzzy matching
             return self.simple_ratio(str1, str2)
     
+    # এই ফাংশনটি REPLACE করবেন:
     def simple_ratio(self, str1, str2):
-        """সিম্পল রেশিও ক্যালকুলেটর"""
+        """সিম্পল রেশিও ক্যালকুলেটর - FIXED"""
         if not str1 or not str2:
-            return 0
-            
+            return 0  # ✅ 0 দিচ্ছে, 0.0 নয়
+        
         str1 = str1.lower()
         str2 = str2.lower()
         
         # Exact match
         if str1 == str2:
-            return 100
-            
+            return 100  # ✅ 100%
+        
         # Basic partial matching
         if str1 in str2 or str2 in str1:
-            return 80
+            return 90  # ✅ 90% (VS Code-এ 95 ছিল)
         
         # Word-based matching
         str1_words = set(str1.split())
@@ -106,18 +128,19 @@ class SearchEngine:
         
         if common_words:
             match_percentage = (len(common_words) / max(len(str1_words), len(str2_words))) * 100
-            return min(75, match_percentage)
+            return int(min(85, match_percentage))  # ✅ Max 85%
         
         # Character-based similarity using difflib
         try:
             similarity = difflib.SequenceMatcher(None, str1, str2).ratio()
-            return int(similarity * 70)
+            return int(similarity * 100)  # ✅ 100% পর্যন্ত স্কেল করছি
         except:
-            # Fallback simple calculation
+            # Fallback: common characters
             common_chars = set(str1) & set(str2)
             if not common_chars:
-                return 0.0
-            return len(common_chars) / max(len(str1), len(str2))
+                return 0
+            similarity = len(common_chars) / max(len(str1), len(str2))
+        return int(similarity * 80)  # ✅ 80% পর্যন্ত
     
     def check_series_match(self, movie, query):
         """সিরিজ ম্যাচিং চেক করবে (Dhoom, Dhoom 2, ইত্যাদি)"""

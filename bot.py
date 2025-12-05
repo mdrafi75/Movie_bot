@@ -257,7 +257,7 @@ async def handle_auto_search(update: Update, query: str):
         print(f"🎯 বেস্ট ম্যাচ: '{best_match['title']}' (স্কোর: {match_score})")
         
         # ২. ম্যাচ কোয়ালিটি based action
-        if match_score >= 90:  # এক্সাক্ট ম্যাচ (90%+)
+        if match_score >= 85:  # এক্সাক্ট ম্যাচ (90%+)
             # ✅ যদি ১টির বেশি মুভি থাকে
             if len(results) > 1:
                 await update.message.reply_text(
@@ -279,7 +279,7 @@ async def handle_auto_search(update: Update, query: str):
                 # শুধু ১টি থাকলে
                 await send_direct_result(update, best_match)
         
-        elif match_score >= 70:  # পার্শিয়াল ম্যাচ - কনফার্মেশন
+        elif match_score >= 60:  # পার্শিয়াল ম্যাচ - কনফার্মেশন
             await ask_confirmation(update, query, best_match)
         
         else:  # লো কনফিডেন্স - সাজেশন
