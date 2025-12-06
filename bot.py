@@ -257,7 +257,7 @@ async def handle_auto_search(update: Update, query: str):
         print(f"🎯 বেস্ট ম্যাচ: '{best_match['title']}' (স্কোর: {match_score})")
         
         # ২. ম্যাচ কোয়ালিটি based action
-        if match_score >= 85:  # এক্সাক্ট ম্যাচ (90%+)
+        if match_score >= 90:  # এক্সাক্ট ম্যাচ (90%+)
             # ✅ যদি ১টির বেশি মুভি থাকে
             if len(results) > 1:
                 await update.message.reply_text(
@@ -279,7 +279,7 @@ async def handle_auto_search(update: Update, query: str):
                 # শুধু ১টি থাকলে
                 await send_direct_result(update, best_match)
         
-        elif match_score >= 55:  # পার্শিয়াল ম্যাচ - কনফার্মেশন
+        elif match_score >= 70:  # পার্শিয়াল ম্যাচ - কনফার্মেশন
             await ask_confirmation(update, query, best_match)
         
         else:  # লো কনফিডেন্স - সাজেশন
@@ -298,8 +298,8 @@ async def handle_auto_search(update: Update, query: str):
 • স্পেসিং চেক করুন
 
 📝 <b>উদাহরণ:</b>
-<code>kgf</code> 
-<code>rrr</code> 
+<code>Diesel</code> 
+<code>Devara</code> 
 
 <b>এভাবে চেষ্টা করার পর যদি মুভি না পান তাহলে মুভি রিকোয়েস্ট করুন নিচের দেয়া নিয়মে</b>
 
@@ -695,11 +695,14 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
 
     📝 <b>উদাহরণ:</b>
     <code>Diesel</code> (<i>❌ Diesel full movie</i>)
-    <code>Avatar</code> (<i>❌ avatar the way of water</i>)
     <code>Bahubali</code> (<i>❌ বাহুবলী</i>)
 
-    🔄 <b>আবার চেষ্টা করুন - সঠিক নাম লিখুন:</b>
-    <code>{original_query.split()[0] if original_query.split() else original_query}</code>
+    <b>এভাবে চেষ্টা করার পর যদি মুভি না পান তাহলে মুভি রিকোয়েস্ট করুন নিচের দেয়া নিয়মে</b>
+
+    <code>/req RRR 2023</code>
+    <code>/req Diesel 2025</code>
+
+    🔄 <b>আবার চেষ্টা করুন</b>
     """
         
         await query.edit_message_text(
@@ -1765,119 +1768,6 @@ async def force_refresh_command(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(f"❌ কমান্ড এরর: {str(e)[:200]}")
 
 
-async def handle_auto_search(update: Update, query: str):
-    """ইউজারের সরাসরি মুভি কোয়েরি হ্যান্ডল করবে - DEBUG"""
-    try:
-        print(f"\n" + "="*60)
-        print(f"🔍 AUTO-SEARCH TRIGGERED")
-        print(f"📝 Query: '{query}'")
-        print(f"👤 User: {update.message.from_user.first_name}")
-        print(f"🏷️ Chat: {update.message.chat.type}")
-        print("="*60)
-        
-        # ১. এক্সাক্ট সার্চ
-        results = search_engine.search_movies(query)
-        
-        print(f"📊 Search Results: {len(results)} movies found")
-        
-        if not results:
-            print(f"❌ NO RESULTS - Calling handle_no_results()")
-            await handle_no_results(update, query)
-            return
-        
-        best_match = results[0]
-        match_score = search_engine.calculate_match_score(best_match, query)
-        
-        print(f"🎯 Best Match: '{best_match['title']}'")
-        print(f"📈 Match Score: {match_score}%")
-        print(f"📊 All Results Count: {len(results)}")
-        
-        # ২. ম্যাচ কোয়ালিটি based action
-        print(f"\n🤔 DECISION MAKING:")
-        print(f"   • Score >= 90: {match_score >= 90}")
-        print(f"   • Score >= 70: {match_score >= 70}") 
-        print(f"   • Score >= 55: {match_score >= 55}")
-        
-        if match_score >= 90:
-            print(f"   ✅ DIRECT RESULT (Score: {match_score} >= 90)")
-            if len(results) > 1:
-                await update.message.reply_text(
-                    f"🎬 <b>'{query}' - পাওয়া ভার্সনগুলো ({len(results)} টি):</b>",
-                    parse_mode='HTML'
-                )
-                for movie in results[:3]:
-                    await send_movie_result_with_image(update, movie)
-                if len(results) > 3:
-                    await update.message.reply_text(
-                        f"📦 <i>এবং আরও {len(results) - 3} টি মুভি...</i>",
-                        parse_mode='HTML'
-                    )
-            else:
-                await send_direct_result(update, best_match)
-        
-        elif match_score >= 70:
-            print(f"   ✅ CONFIRMATION ASK (Score: {match_score} >= 70)")
-            await ask_confirmation(update, query, best_match)
-        
-        elif match_score >= 55:
-            print(f"   ✅ LOW CONFIDENCE SUGGESTION (Score: {match_score} >= 55)")
-            await show_search_suggestions(update, query, results[:3])
-        
-        else:
-            print(f"   ❌ VERY LOW SCORE: {match_score}% - Showing no results")
-            await handle_no_results(update, query)
-        
-        print(f"\n✅ AUTO-SEARCH COMPLETE")
-        print("="*60 + "\n")
-            
-    except Exception as e:
-        print(f"\n❌ AUTO-SEARCH ERROR: {e}")
-        import traceback
-        print(f"🔍 ERROR DETAILS: {traceback.format_exc()}")
-        print("="*60 + "\n")
-        
-        error_message = f"""
-⚠️ <b>'{query}' নামে সার্চ করতে সমস্যা হচ্ছে</b>
-"""
-        await update.message.reply_text(
-            error_message, 
-            parse_mode='HTML',
-            reply_to_message_id=update.message.message_id,
-            disable_web_page_preview=True
-        )
-
-        # bot.py-তে CommandHandler যোগ করুন:
-
-# bot.py-তে এই ফাংশনটি যোগ করুন (অন্য ফাংশনের পরে):
-async def test_score(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """সরল স্কোর টেস্ট কমান্ড"""
-    if not context.args:
-        await update.message.reply_text("Use: /testscore movie_name")
-        return
-    
-    query = ' '.join(context.args)
-    
-    # শুধু প্রথম ২০টি মুভি চেক করবে
-    movies = cache_manager.get_all_movies()[:20]
-    
-    response = f"🔍 **টেস্ট স্কোর:** `{query}`\n\n"
-    
-    for movie in movies:
-        score = search_engine.calculate_match_score(movie, query)
-        if score > 50:  # শুধু ৫০%+ স্কোর দেখাবে
-            response += f"• `{movie['title']}` = {score}%\n"
-    
-    if "= %" not in response:  # যদি কোনো ম্যাচ না থাকে
-        response += "❌ ৫০%+ স্কোরের কোনো মুভি নেই\n"
-        response += f"\n🔍 প্রথম ৫টি মুভি:\n"
-        for movie in movies[:5]:
-            score = search_engine.calculate_match_score(movie, query)
-            response += f"• `{movie['title']}` = {score}%\n"
-    
-    await update.message.reply_text(response, parse_mode='Markdown')
-
-
-
 
 # মেইন ফাংশন
 def main():
@@ -1907,9 +1797,6 @@ def main():
     app.add_handler(CommandHandler("requests", admin_requests_dashboard))
     app.add_handler(CommandHandler("cleanup", cleanup_command))
     app.add_handler(CommandHandler("force_refresh", force_refresh_command))
-
-    # main() ফাংশনে এই লাইন যোগ করুন (অন্য CommandHandler-দের পরে):
-    app.add_handler(CommandHandler("testscore", test_score))
     
     # ক্যালব্যাক হ্যান্ডলার
     app.add_handler(CallbackQueryHandler(button_callback_handler))

@@ -4,9 +4,9 @@ import difflib
 
 # Try to import fuzzywuzzy, but provide fallback
 try:
-    from fuzzywuzzy import fuzz, process
+    from rapidfuzz import fuzz, process  # ✅ শুধু এই লাইন পরিবর্তন
     FUZZY_AVAILABLE = True
-    print("✅ fuzzywuzzy লোড হয়েছে")
+    print("✅ rapidfuzz লোড হয়েছে")
 except ImportError:
     print("⚠️ fuzzywuzzy না থাকলে alternative ব্যবহার করবে")
     FUZZY_AVAILABLE = False
@@ -52,27 +52,6 @@ class SearchEngine:
     
     def calculate_match_score(self, movie, query):
         """ম্যাচ স্কোর ক্যালকুলেট করবে - বাংলা এবং ইংলিশ উভয় ভাষায়"""
-        
-        # ✅ NEW: আগে এক্সাক্ট ম্যাচ চেক করব
-        query_lower = query.lower().strip()
-        title_lower = movie.get('title', '').lower().strip()
-        
-        # 1. EXACT MATCH (মূল সমস্যা এখানে)
-        if query_lower == title_lower:
-            return 100  # ✅ সরাসরি 100%
-        
-        # 2. QUERY টাইটেলে আছে (বা উল্টো)
-        if query_lower in title_lower or title_lower in query_lower:
-            return 95  # ✅ 95%
-        
-        # 3. Word-by-word এক্সাক্ট ম্যাচ
-        query_words = set(query_lower.split())
-        title_words = set(title_lower.split())
-        
-        if query_words == title_words:
-            return 90  # ✅ 90%
-        
-        # 4. তারপর আগের লজিক
         scores = []
         
         # ইংলিশ টাইটেলে সার্চ
@@ -104,22 +83,21 @@ class SearchEngine:
             # Alternative fuzzy matching
             return self.simple_ratio(str1, str2)
     
-    # এই ফাংশনটি REPLACE করবেন:
     def simple_ratio(self, str1, str2):
-        """সিম্পল রেশিও ক্যালকুলেটর - FIXED"""
+        """সিম্পল রেশিও ক্যালকুলেটর"""
         if not str1 or not str2:
-            return 0  # ✅ 0 দিচ্ছে, 0.0 নয়
-        
+            return 0
+            
         str1 = str1.lower()
         str2 = str2.lower()
         
         # Exact match
         if str1 == str2:
-            return 100  # ✅ 100%
-        
+            return 100
+            
         # Basic partial matching
         if str1 in str2 or str2 in str1:
-            return 90  # ✅ 90% (VS Code-এ 95 ছিল)
+            return 80
         
         # Word-based matching
         str1_words = set(str1.split())
@@ -128,19 +106,18 @@ class SearchEngine:
         
         if common_words:
             match_percentage = (len(common_words) / max(len(str1_words), len(str2_words))) * 100
-            return int(min(85, match_percentage))  # ✅ Max 85%
+            return min(75, match_percentage)
         
         # Character-based similarity using difflib
         try:
             similarity = difflib.SequenceMatcher(None, str1, str2).ratio()
-            return int(similarity * 100)  # ✅ 100% পর্যন্ত স্কেল করছি
+            return int(similarity * 70)
         except:
-            # Fallback: common characters
+            # Fallback simple calculation
             common_chars = set(str1) & set(str2)
             if not common_chars:
-                return 0
-            similarity = len(common_chars) / max(len(str1), len(str2))
-        return int(similarity * 80)  # ✅ 80% পর্যন্ত
+                return 0.0
+            return len(common_chars) / max(len(str1), len(str2))
     
     def check_series_match(self, movie, query):
         """সিরিজ ম্যাচিং চেক করবে (Dhoom, Dhoom 2, ইত্যাদি)"""
@@ -272,8 +249,8 @@ class SearchEngine:
             
             best_score = max(title_score, bangla_score)
             
-            # 40-95% ম্যাচ (সম্পূর্ণ ম্যাচ না)
-            if 40 <= best_score < 95:
+            # 60-95% ম্যাচ (সম্পূর্ণ ম্যাচ না)
+            if 60 <= best_score < 95:
                 similar_movies.append(movie)
         
         # সর্বোচ্চ ৩টি সিমিলার মুভি রিটার্ন করবে
@@ -395,67 +372,6 @@ class SearchEngine:
                 print(f"      ... এবং আরও {len(series_movies)-3} টি")
         
         return multi_part_series
-    
-
-    # search_engine.py - calculate_match_score() ফাংশনের শুরুতে যোগ করুন:
-    def calculate_match_score(self, movie, query):
-        """ম্যাচ স্কোর ক্যালকুলেট করবে - FIXED FOR RENDER.COM"""
-        
-        query_lower = query.strip().lower()
-        title_lower = movie.get('title', '').lower().strip()
-        
-        print(f"🔍 [RENDER] Matching: '{query_lower}' vs '{title_lower}'")
-        
-        # ১. এক্সাক্ট ম্যাচ (100%)
-        if query_lower == title_lower:
-            print("   ✅ EXACT MATCH: 100%")
-            return 100
-        
-        # ২. একটি অন্যটির মধ্যে আছে (95%)
-        if query_lower in title_lower:
-            print(f"   ✅ QUERY IN TITLE: '{query_lower}' in '{title_lower}' = 95%")
-            return 95
-        
-        if title_lower in query_lower:
-            print(f"   ✅ TITLE IN QUERY: '{title_lower}' in '{query_lower}' = 95%")
-            return 95
-        
-        # ৩. প্রথম ৪ অক্ষর মিল (85%) - Render.com-এর জন্য
-        if len(query_lower) >= 4 and len(title_lower) >= 4:
-            if query_lower[:4] == title_lower[:4]:
-                print(f"   ✅ FIRST 4 CHARS: '{query_lower[:4]}' = '{title_lower[:4]}' = 85%")
-                return 85
-        
-        # ৪. প্রথম ৩ অক্ষর মিল (75%) - Render.com-এর জন্য
-        if len(query_lower) >= 3 and len(title_lower) >= 3:
-            if query_lower[:3] == title_lower[:3]:
-                print(f"   ✅ FIRST 3 CHARS: '{query_lower[:3]}' = '{title_lower[:3]}' = 75%")
-                return 75
-        
-        # ৫. Word-based matching (65%)
-        query_words = set(query_lower.split())
-        title_words = set(title_lower.split())
-        common_words = query_words.intersection(title_words)
-        
-        if common_words:
-            print(f"   ✅ COMMON WORDS: {common_words} = 65%")
-            return 65
-        
-        # ৬. difflib similarity (0-60%)
-        try:
-            from difflib import SequenceMatcher
-            similarity = SequenceMatcher(None, query_lower, title_lower).ratio()
-            difflib_score = int(similarity * 100)
-            
-            # Render.com-এ কম স্কেলিং
-            final_score = min(60, difflib_score)  # Max 60% for difflib
-            print(f"   🔄 DIFflib: {difflib_score}% → {final_score}%")
-            return final_score
-        except:
-            print("   ❌ DIFflib ERROR")
-        
-        print("   ❌ NO MATCH: 0%")
-        return 0
 
 # টেস্ট করার জন্য
 if __name__ == "__main__":
