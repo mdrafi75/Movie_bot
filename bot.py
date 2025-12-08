@@ -1,5 +1,5 @@
-from keep_alive import keep_alive
-keep_alive()
+
+
 import sys
 from blogger_api import BloggerAPI
 from cache_manager import CacheManager
@@ -30,6 +30,37 @@ from short_admin_menu import ShortAdminMenu
 
 # আমাদের কনফিগারেশন ইম্পোর্ট
 import config
+# bot.py - প্রথম ১০ লাইনের মধ্যে এই কোড যোগ করুন
+import os
+from flask import Flask, request
+from threading import Thread
+
+# ✅ Render-এর জন্য সঠিক পোর্ট
+PORT = int(os.environ.get('PORT', 10000))
+
+# ✅ Flask app তৈরি
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def home():
+    return "🎬 Movie Bot is Running! | Status: ACTIVE ✅"
+
+@flask_app.route('/health')
+def health():
+    return "OK", 200
+
+@flask_app.route('/ping')
+def ping():
+    return "PONG", 200
+
+# ✅ Flask server চালু করব আলাদা থ্রেডে
+def run_flask():
+    flask_app.run(host='0.0.0.0', port=PORT, debug=False, threaded=True)
+
+# ✅ Thread শুরু করব
+flask_thread = Thread(target=run_flask, daemon=True)
+flask_thread.start()
+print(f"✅ Flask server started on port {PORT}")
 
 # লগিং সেটআপ
 logging.basicConfig(
@@ -1871,6 +1902,50 @@ def main():
     loop.create_task(delayed_dashboard())
     
     app.run_polling()
+
+    # ✅ Webhook মোডে রান করব (Render-এর জন্য ভালো)
+    PORT = int(os.environ.get('PORT', 10000))
+    
+    # ✅ Webhook URL (আপনার Render app name দিয়ে replace করুন)
+    webhook_url = f"https://movie-bot-qv5s.onrender.com/{config.BOT_TOKEN}"
+    
+    print(f"🌐 Webhook URL: {webhook_url}")
+    print(f"🔧 Using PORT: {PORT}")
+    
+    async def run_webhook():
+        try:
+            # ১. আগের webhook ডিলিট করব
+            await app.bot.delete_webhook(drop_pending_updates=True)
+            
+            # ২. Webhook সেট করব
+            await app.bot.set_webhook(
+                url=webhook_url,
+                drop_pending_updates=True
+            )
+            
+            # ৩. Webhook server শুরু করব
+            await app.updater.start_webhook(
+                listen="0.0.0.0",
+                port=PORT,
+                url_path=config.BOT_TOKEN,
+                webhook_url=webhook_url,
+                drop_pending_updates=True
+            )
+            
+            print("✅ Webhook started successfully!")
+            print("🤖 Bot is now running with Webhook mode")
+            
+            # ৪. Bot running রাখব
+            await asyncio.Event().wait()
+            
+        except Exception as e:
+            print(f"❌ Webhook error: {e}")
+            # Fallback: Polling mode
+            print("🔄 Falling back to polling mode...")
+            await app.run_polling()
+    
+    # Run the bot
+    asyncio.run(run_webhook())
     
 if __name__ == "__main__":
     main()

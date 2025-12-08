@@ -9,10 +9,10 @@ services:
     startCommand: python bot.py
     envVars:
       - key: PORT
-        value: "8080"
+        value: "10000"  # ✅ Render default port
       - key: PYTHON_VERSION
         value: "3.11.9"
       - key: BOT_TOKEN
         sync: false
-    healthCheckPath: /health
+    healthCheckPath: /health  # ✅ Flask health check
     autoDeploy: true
