@@ -1,6 +1,5 @@
-python-telegram-bot[job-queue]==20.7
+python-telegram-bot[job-queue]==20.3
 requests==2.31.0
 beautifulsoup4==4.12.2
 python-dotenv==1.0.0
-rapidfuzz==3.9.6
 flask==2.3.3
