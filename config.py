@@ -68,6 +68,20 @@ RESPONSE_TIMEOUT = 10
 MAX_MESSAGE_LENGTH = 4000
 REFRESH_INTERVAL = int(get_env('REFRESH_INTERVAL_MINUTES', 30)) * 60
 
+
+# ================== AI AGENT ==================
+# OpenRouter সরিয়ে Google API যোগ করুন
+GOOGLE_API_KEY = get_env('GOOGLE_API_KEY')
+
+# ================== NEW FILES ==================
+USER_PROFILES_FILE = get_env('USER_PROFILES_FILE', 'data/user_profiles.json')
+LEARNING_CACHE_FILE = get_env('LEARNING_CACHE_FILE', 'data/learning_cache.json')
+
+# ================== RECOMMENDATION ==================
+ENABLE_RECOMMENDATIONS = get_env('ENABLE_RECOMMENDATIONS', 'True').lower() == 'true'
+TRENDING_LIMIT = int(get_env('TRENDING_LIMIT', 5))
+SIMILAR_MOVIES_LIMIT = int(get_env('SIMILAR_MOVIES_LIMIT', 3))
+
 # ================== MESSAGES ==================
 DEFAULT_RESPONSE = """
 <b>দুঃখিত! 😔 আপনি যে বিষয়ে জানতে চেয়েছেন এর উত্তর আমার কাছে নেই। </b>
