@@ -218,6 +218,27 @@ class RequestManager:
         except Exception as e:
             print(f"❌ রিকোয়েস্ট ক্লিনআপ এরর: {e}")
             return 0
+        
+    def mark_rejected(self, request_id):
+        """রিকোয়েস্ট rejected মার্ক করবে"""
+        try:
+            for request in self.requests_data['requests']:
+                if request['request_id'] == request_id:
+                    request['status'] = 'rejected'
+                    request['rejected_time'] = datetime.now().isoformat()
+                    
+                    self.requests_data['stats']['pending'] -= 1
+                    # rejected স্ট্যাটস যোগ করতে চাইলে আলাদা কাউন্টার রাখতে হবে
+                    
+                    self.save_requests()
+                    print(f"❌ রিকোয়েস্ট rejected: #{request_id}")
+                    return True
+            
+            print(f"❌ রিকোয়েস্ট পাওয়া যায়নি: #{request_id}")
+            return False
+        except Exception as e:
+            print(f"❌ rejected মার্ক করতে সমস্যা: {e}")
+            return False
 
 # টেস্ট করার জন্য
 if __name__ == "__main__":

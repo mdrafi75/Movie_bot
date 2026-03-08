@@ -1,4 +1,4 @@
-# admin_notifier.py - এডমিন নোটিফিকেশন সিস্টেট
+# admin_notifier.py - এডমিন নোটিফিকেশন সিস্টেম
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from datetime import datetime
 
@@ -8,7 +8,11 @@ class AdminNotifier:
         self.notification_channel_id = notification_channel_id
     
     async def notify_admin(self, request_data, bot):
-        """এডমিনকে রিকোয়েস্ট নোটিফাই করবে"""
+        """এডমিনকে রিকোয়েস্ট নোটিফাই করবে (পুরনো ভার্সন)"""
+        return await self.notify_admin_with_buttons(request_data, bot)
+    
+    async def notify_admin_with_buttons(self, request_data, bot):
+        """এডমিনকে রিকোয়েস্ট নোটিফাই করবে - এডমিন-অনলি বাটন সহ"""
         try:
             request_id = request_data['request_id']
             movie_name = request_data['movie_name']
@@ -17,17 +21,17 @@ class AdminNotifier:
             full_name = request_data['full_name']
             user_id = request_data['user_id']
             
-            # নোটিফিকেশন মেসেজ তৈরি
+            # নোটিফিকেশন মেসেজ তৈরি (HTML ফরম্যাট)
             notification_text = f"""
-🚨 **নতুন মুভি রিকোয়েস্ট** 🚨
+    🚨 <b>নতুন মুভি রিকোয়েস্ট</b> 🚨
 
-🎬 মুভি: "{movie_name} {movie_year}"
-👤 ইউজার: {full_name} (@{username})
-🆔 ইউজার ID: `{user_id}`
-📅 রিকোয়েস্ট সময়: {datetime.now().strftime("%d %b %Y, %I:%M %p")}
-🔢 রিকোয়েস্ট ID: `#{request_id}`
+    🎬 <b>মুভি:</b> "{movie_name} {movie_year}"
+    👤 <b>ইউজার:</b> {full_name} (@{username})
+    🆔 <b>ইউজার ID:</b> <code>{user_id}</code>
+    📅 <b>রিকোয়েস্ট সময়:</b> {datetime.now().strftime("%d %b %Y, %I:%M %p")}
+    🔢 <b>রিকোয়েস্ট ID:</b> <code>#{request_id}</code>
 
-🔍 **সার্চ করতে:** `{movie_name} {movie_year}`
+    🔍 <b>সার্চ করতে:</b> <code>{movie_name} {movie_year}</code>
             """
             
             # "Done ✅" বাটন সহ কীবোর্ড
@@ -62,7 +66,7 @@ class AdminNotifier:
                     await bot.send_message(
                         chat_id=self.notification_channel_id,
                         text=notification_text,
-                        parse_mode='Markdown',
+                        parse_mode='HTML',
                         reply_markup=reply_markup
                     )
                 except Exception as e:
@@ -83,23 +87,26 @@ class AdminNotifier:
             username = request_data['username']
             user_id = request_data['user_id']
             
-            # ইউজারনেম চেক
-            user_mention = f"@{username}" if username and username != f"user_{user_id}" else f"[ইউজার](tg://user?id={user_id})"
+            # ইউজারনেম চেক (HTML ফরম্যাট)
+            if username and username != f"user_{user_id}":
+                user_mention = f"@{username}"
+            else:
+                user_mention = f"<a href='tg://user?id={user_id}'>ইউজার</a>"
             
             user_notification = f"""
-{user_mention} 🎉 **শুভসংবাদ!**
+    {user_mention} 🎉 <b>শুভসংবাদ!</b>
 
-✅ আপনার রিকোয়েস্ট করা মুভি আপলোড করা হয়েছে!
+    ✅ আপনার রিকোয়েস্ট করা মুভি আপলোড করা হয়েছে!
 
-🎬 **{movie_name} {movie_year}**
-📅 রিকোয়েস্ট সময়: {datetime.fromisoformat(request_data['request_time']).strftime("%d %b %I:%M %p")}
-✅ আপডেট: {datetime.now().strftime("%d %b %I:%M %p")}
+    🎬 <b>{movie_name} {movie_year}</b>
+    📅 <b>রিকোয়েস্ট সময়:</b> {datetime.fromisoformat(request_data['request_time']).strftime("%d %b %I:%M %p")}
+    ✅ <b>আপডেট:</b> {datetime.now().strftime("%d %b %I:%M %p")}
 
-🔍 **এখনই দেখুন:**
-`/search {movie_name}`
-অথবা সরাসরি: `{movie_name}`
+    🔍 <b>এখনই দেখুন:</b>
+    <code>/search {movie_name}</code>
+    অথবা সরাসরি: <code>{movie_name}</code>
 
-👇 ক্লিক করে কপি করুন এবং সার্চ করুন!
+    👇 ক্লিক করে কপি করুন এবং সার্চ করুন!
             """
             
             # গ্রুপে নোটিফাই করবে (ইউজার মেনশন সহ)
@@ -108,7 +115,7 @@ class AdminNotifier:
                     await bot.send_message(
                         chat_id=group_id,
                         text=user_notification,
-                        parse_mode='Markdown',
+                        parse_mode='HTML',
                         disable_web_page_preview=True
                     )
                     print(f"✅ ইউজারকে গ্রুপে নোটিফাই করা হয়েছে")
@@ -122,8 +129,8 @@ class AdminNotifier:
             try:
                 await bot.send_message(
                     chat_id=user_id,
-                    text=f"✅ আপনার রিকোয়েস্ট #{request_id} সম্পূর্ণ হয়েছে!\n\n🎬 {movie_name} {movie_year} এখন সার্চ করে দেখতে পারেন।\n\n🔍 সার্চ করুন: `/search {movie_name}`",
-                    parse_mode='Markdown'
+                    text=f"✅ আপনার রিকোয়েস্ট #{request_id} সম্পূর্ণ হয়েছে!\n\n🎬 <b>{movie_name} {movie_year}</b> এখন সার্চ করে দেখতে পারেন।\n\n🔍 <b>সার্চ করুন:</b> <code>/search {movie_name}</code>",
+                    parse_mode='HTML'
                 )
                 print(f"✅ ইউজারকে প্রাইভেটে নোটিফাই করা হয়েছে: {user_id}")
                 return True

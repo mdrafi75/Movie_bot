@@ -288,35 +288,71 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if top_score >= 90:
                 print(f"🎯 High confidence match ({top_score}%) - {top_movie['title']}")
                 
-                # সিরিজ/এপিসোড চেক করো
                 series_movies = search_engine.get_movie_series(top_movie['title'])
                 
                 if series_movies and len(series_movies) > 1:
-                    # ✅ একাধিক এপিসোড থাকলে সবগুলো দেখাও
                     print(f"📚 Found {len(series_movies)} episodes/parts")
                     for movie in series_movies:
                         await send_movie_result_with_image(update, movie)
                 else:
-                    # ✅ এপিসোড না থাকলে শুধু একটি কার্ড
                     await send_movie_result_with_image(update, top_movie)
                 
-                # লার্নিং সিস্টেম আপডেট
                 if learning_system and query.lower() != top_movie['title'].lower():
                     learning_system.learn_spelling(query, top_movie['title'])
                 
-                return  # কাজ শেষ
+                return
             
-            # ✅ কেস ২: স্কোর ৯০% এর নিচে
-            else:
-                print(f"🔍 Low confidence match ({top_score}%) - Showing top 3 movies")
+            # ✅ কেস ২: স্কোর ৫০% - ৮৯% (৩টি কার্ড + কনফার্মেশন)
+            elif top_score >= 50 and top_score < 90:
+                print(f"🔍 Mid confidence match ({top_score}%) - Showing 3 cards + confirmation")
+                
+                # ৩টি মুভি কার্ড দেখাও
                 movies_to_show = [item['movie'] for item in results[:3]]
                 await send_multiple_movie_cards(update, movies_to_show)
+                
+                # কনফার্মেশন জিজ্ঞাসা করো (ইউজার মেনশন সহ)
+                await ask_confirmation_after_cards(update, query, results[:3])
+                return
+            
+            # ✅ কেস ৩: স্কোর ৫০% এর নিচে
+            else:
+                print(f"🔍 Very low confidence match ({top_score}%) - Asking to search again")
+                await send_low_confidence_message(update, query)
                 return
         
         else:
-            # না পেলে ট্রেন্ডিং ৩টি মুভি কার্ড দেখাও
             await send_trending_movies_cards(update, context)
             return
+        
+
+async def send_low_confidence_message(update: Update, original_query):
+    """খুবই কম স্কোর হলে ইউজারকে সঠিক নাম দিয়ে সার্চ করতে বলে"""
+    user = update.effective_user
+    user_mention = f"@{user.username}" if user.username else user.first_name
+    
+    message = f"""
+🤔 <b>{user_mention}</b>, আপনি কি '<b>{original_query}</b>' সঠিক লিখেছেন?
+
+আমি এই নামের কাছাকাছি কোনো মুভি খুঁজে পাইনি।
+
+📝 <b>সঠিকভাবে লিখুন:</b>
+• শুধু মুভির মূল নাম (যেমন: <code>Diesel</code>)
+• ইংরেজিতে লিখুন (বাংলা অক্ষরে না)
+• বানান চেক করুন
+
+✅ <b>উদাহরণ:</b>
+❌ <code>mardan 2</code> → ✅ <code>Mardaani 2</code>
+❌ <code>psuhpa</code> → ✅ <code>Pushpa</code>
+❌ <code>avnger</code> → ✅ <code>Avengers</code>
+
+🔄 <b>আবার চেষ্টা করুন</b> সঠিক নাম লিখে।
+"""
+    
+    await update.message.reply_text(
+        text=message,
+        parse_mode='HTML',
+        reply_to_message_id=update.message.message_id
+    )
 
 async def send_multiple_movie_cards(update: Update, movies):
     """একাধিক মুভি কার্ড পাঠায় (প্রতিটি পোস্টার + বাটন সহ)"""
@@ -415,31 +451,164 @@ async def handle_not_found(update, context, query):
             f"রিকোয়েস্ট করতে: /req {query}"
         )
 
-
-# CALLBACK হ্যান্ডলার আপডেট করুন (নতুন বাটনের জন্য)
 async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ইনলাইন বাটন ক্লিক হ্যান্ডল করবে - ক্লিন ভার্সন"""
     query = update.callback_query
-    await query.answer()
-    
+    clicking_user = query.from_user
+    clicking_user_id = clicking_user.id
     data = query.data
     
-    if data.startswith("movie_"):
-        movie_title = data.replace("movie_", "")
-        results = search_engine.search_movies(movie_title)
-        if results:
-            await send_enhanced_movie_response(
-                update, context, results[0], query.from_user.id
-            )
+    print(f"🖱️ বাটন ক্লিক: {clicking_user.first_name} ({clicking_user_id}) -> {data}")
     
-    elif data.startswith("suggest_"):
-        movie_title = data.replace("suggest_", "")
-        results = search_engine.search_movies(movie_title)
-        if results:
-            await send_enhanced_movie_response(
-                update, context, results[0], query.from_user.id
-            )
+    # চ্যাটের টাইপ চেক করো
+    chat_type = update.effective_chat.type
     
-    # ... আপনার existing callback handlers ...
+    # ✅ প্রথমে এডমিন বাটন চেক করো
+    if data.startswith("req_done_"):
+        request_id = int(data.replace("req_done_", ""))
+        await handle_admin_done(update, context, request_id, clicking_user)
+        return
+    
+    if data.startswith("req_later_"):
+        request_id = int(data.replace("req_later_", ""))
+        await handle_admin_later(update, context, request_id, clicking_user)
+        return
+    
+    if data.startswith("req_reject_"):
+        request_id = int(data.replace("req_reject_", ""))
+        await handle_admin_reject(update, context, request_id, clicking_user)
+        return
+    
+    # ✅ ইউজার-স্পেসিফিক বাটন থেকে ইউজার আইডি এক্সট্রাক্ট
+    original_data, target_user_id = extract_user_from_callback(data)
+    
+    # শুধু গ্রুপ/সুপারগ্রুপে ইউজার-স্পেসিফিক চেক প্রয়োগ করো
+    if chat_type in ['group', 'supergroup'] and target_user_id and target_user_id != clicking_user_id:
+        await query.answer("⛔ এই বাটনটি আপনার জন্য নয়!", show_alert=True)
+        return
+    
+    # এখন original_data দিয়ে কাজ করো
+    data = original_data
+    
+    # ✅ এডমিন মেনু সিস্টেম
+    admin_ids = config.ADMIN_USER_IDS
+    
+    if data in ["show_admin_commands", "close_menu"] or data.startswith("run_") or data.startswith("admin_"):
+        if clicking_user_id not in admin_ids:
+            await query.answer("⛔ শুধুমাত্র এডমিন", show_alert=True)
+            return
+    
+    # এডমিন কমান্ডস মেনু
+    if data == "show_admin_commands":
+        await query.edit_message_text(
+            text=admin_menu.get_commands_list(),
+            reply_markup=admin_menu.create_commands_keyboard(),
+            parse_mode='HTML'
+        )
+        return
+    
+    # কমান্ড রান
+    elif data.startswith("run_"):
+        cmd = f"/{data.replace('run_', '')}"
+        await query.message.reply_text(cmd)
+        await query.answer(f"✅ {cmd}", show_alert=False)
+        return
+    
+    # মেনু ক্লোজ
+    elif data == "close_menu":
+        await query.delete_message()
+        return
+    
+    # ✅ নতুন কনফার্মেশন বাটন
+    elif data.startswith("confirm_yes_"):
+        original_query = data.replace("confirm_yes_", "")
+        await handle_confirmation_yes(update, context, original_query)
+        await query.answer()
+        return
+
+    elif data.startswith("confirm_no_"):
+        original_query = data.replace("confirm_no_", "")
+        await handle_confirmation_no(update, context, original_query, clicking_user)
+        await query.answer()
+        return
+    
+    # ✅ সাজেশন থেকে মুভি সিলেক্ট
+    elif data.startswith("select_movie_"):
+        movie_title = data.replace("select_movie_", "")
+        await handle_movie_selection(update, context, movie_title, clicking_user)
+        await query.answer(f"✅ {movie_title} সিলেক্ট করা হয়েছে")
+        return
+    
+    # ✅ হেল্প বাটন
+    elif data == "show_search_guide":
+        await show_search_guide(update, context)
+        return
+    
+    elif data == "help_search":
+        await show_help_search(update, context)
+        return
+    
+    elif data == "link_coming_soon":
+        await query.answer("⚠️ লিংক খুব দ্রুত অ্যাড করা হবে। অনুগ্রহ করে অপেক্ষা করুন...", show_alert=True)
+        return
+    
+    else:
+        print(f"⚠️ Unknown callback data: {data}")
+
+    
+# ========== HELPER FUNCTIONS ==========
+
+async def show_help_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """হেল্প সার্চ গাইড দেখায়"""
+    # callback_query থেকে মেসেজ পাঠানো
+    if update.callback_query:
+        query = update.callback_query
+        await query.message.reply_text(
+            "🆘 <b>সার্চ সাহায্য:</b>\n\n"
+            "• <b>সঠিক নাম</b> ব্যবহার করুন\n"
+            "• বাংলা বা ইংলিশ যেকোন ভাষায় লিখুন\n"
+            "• স্পেলিং ভুল হলে বট অটো করেক্ট করবে\n"
+            "• সমস্যা হলে এডমিনকে জানান",
+            parse_mode='HTML'
+        )
+    else:
+        await update.message.reply_text(
+            "🆘 <b>সার্চ সাহায্য:</b>\n\n"
+            "• <b>সঠিক নাম</b> ব্যবহার করুন\n"
+            "• বাংলা বা ইংলিশ যেকোন ভাষায় লিখুন\n"
+            "• স্পেলিং ভুল হলে বট অটো করেক্ট করবে\n"
+            "• সমস্যা হলে এডমিনকে জানান",
+            parse_mode='HTML'
+        )
+
+
+async def show_search_guide(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """সার্চ গাইড দেখায়"""
+    search_guide = """
+🎬 <b>সঠিকভাবে মুভি সার্চ করার গাইড</b>
+
+📝 <b>সার্চ ফরম্যাট:</b>
+• শুধু মুভির নাম (বছর/কোয়ালিটি না)
+• ইংলিশে লিখুন
+• সংক্ষিপ্ত এবং সঠিক নাম
+
+🔍 <b>জনপ্রিয় মুভি উদাহরণ:</b>
+<code>Diesel</code> <code>RRR</code>
+
+❌ <b>ভুল উপায়:</b>
+<code>Diesel full movie hindi</code> → <code>Diesel</code>
+<code>Avatar the way of water</code> → <code>Avatar</code>
+<code>বাহুবলী</code> → <code>Bahubali</code>
+
+🔄 <b>এখনই ট্রাই করুন সরাসরি মুভির নাম লেখুন</b>
+<code>Diesel</code> অথবা <code>RRR</code>
+"""
+    # callback_query থেকে মেসেজ পাঠানো
+    if update.callback_query:
+        query = update.callback_query
+        await query.message.reply_text(search_guide, parse_mode='HTML')
+    else:
+        await update.message.reply_text(search_guide, parse_mode='HTML')
 
 # bot.py - handle_auto_search() ফাংশনে এই অংশটি খুঁজে বদল করুন
 
@@ -701,292 +870,7 @@ async def handle_admin_button(update: Update, context: ContextTypes.DEFAULT_TYPE
     elif text == "🔄 রিফ্রেশ":
         await update.message.reply_text("/refresh")
 
-# ক্যালব্যাক হ্যান্ডলার
-async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ইনলাইন বাটন ক্লিক হ্যান্ডল করবে"""
-    query = update.callback_query
-    await query.answer()
-    
-    user = query.from_user
-    callback_data = query.data
-    
-    print(f"🖱️ বাটন ক্লিক: {user.first_name} -> {callback_data}")
 
-    # ✅ এডমিন মেনু সিস্টেম
-    admin_ids = [6723820690]  # আপনার আইডি
-    
-    # শুধু এডমিনদের জন্য মেনু দেখাবে
-    if callback_data in ["show_admin_commands", "close_menu"] or callback_data.startswith("run_"):
-        if user.id not in admin_ids:
-            await query.answer("⛔ শুধুমাত্র এডমিন", show_alert=True)
-            return
-    
-    # এডমিন কমান্ডস মেনু
-    if callback_data == "show_admin_commands":
-        await query.edit_message_text(
-            text=admin_menu.get_commands_list(),
-            reply_markup=admin_menu.create_commands_keyboard(),
-            parse_mode='HTML'
-        )
-        return
-    
-    # কমান্ড রান
-    elif callback_data.startswith("run_"):
-        cmd = f"/{callback_data.replace('run_', '')}"
-        await query.message.reply_text(cmd)
-        await query.answer(f"✅ {cmd}", show_alert=False)
-        return
-    
-    # মেনু ক্লোজ
-    elif callback_data == "close_menu":
-        await query.delete_message()
-        return
-    
-
-
-    # রিকোয়েস্ট রিলেটেড ক্যালব্যাক
-    if callback_data.startswith("req_"):
-        if callback_data.startswith("req_done_"):
-            request_id = int(callback_data.replace("req_done_", ""))
-            
-            print(f"✅ এডমিন 'Done' ক্লিক করেছেন: রিকোয়েস্ট #{request_id}")
-            
-            # ১. রিকোয়েস্ট ডাটা খুঁজে বের করব
-            request_data = None
-            all_requests = request_manager.requests_data.get('requests', [])
-            for req in all_requests:
-                if req['request_id'] == request_id:
-                    request_data = req
-                    break
-            
-            if not request_data:
-                await query.answer("❌ রিকোয়েস্ট ডাটা পাওয়া যায়নি", show_alert=True)
-                return
-            
-            # ২. এডমিনকে কনফার্মেশন
-            await query.edit_message_text(
-                f"✅ রিকোয়েস্ট `#{request_id}` প্রসেস করা হচ্ছে...\n\n"
-                f"🎬 মুভি: {request_data['full_query']}\n"
-                f"🔄 ক্যাশে আপডেট করা হচ্ছে...",
-                parse_mode='Markdown'
-            )
-            
-            # ৩. রিকোয়েস্ট স্ট্যাটাস আপডেট
-            #request_manager.mark_fulfilled(request_id)
-            
-            # ৪. সরাসরি ক্যাশে আপডেট করব
-            cache_updated = await update_cache_directly(request_data, context.bot)
-            
-            if cache_updated:
-                # ৫. ইউজারকে নোটিফিকেশন
-                try:
-                    import config
-                    group_id = config.GROUP_ID
-                    
-                    # গ্রুপ আইডি কনভার্ট
-                    if isinstance(group_id, str):
-                        try:
-                            group_id = int(group_id)
-                        except:
-                            pass
-                    
-                    if group_id:
-                        await admin_notifier.notify_user_fulfilled(request_data, context.bot, group_id)
-                        print(f"✅ ইউজারকে নোটিফাই করা হয়েছে")
-                except Exception as e:
-                    print(f"❌ ইউজার নোটিফিকেশন এরর: {e}")
-                
-                # ৬. এডমিনকে সাকসেস মেসেজ
-                try:
-                    await context.bot.send_message(
-                        chat_id=user.id,
-                        text=f"🎉 **প্রসেস সম্পূর্ণ!**\n\n"
-                             f"✅ রিকোয়েস্ট `#{request_id}` সম্পূর্ণ হয়েছে\n"
-                             f"🎬 মুভি: {request_data['full_query']}\n"
-                             f"💾 ক্যাশে আপডেট হয়েছে\n"
-                             f"👤 ইউজারকে নোটিফাই করা হয়েছে\n\n"
-                             f"🔍 ইউজার এখন সার্চ করতে পারবে: `/search {request_data['movie_name']}`",
-                        parse_mode='Markdown'
-                    )
-                except Exception as e:
-                    print(f"⚠️ এডমিন কনফার্মেশন এরর: {e}")
-            else:
-                # ক্যাশে আপডেট ব্যর্থ হলে
-                try:
-                    await context.bot.send_message(
-                        chat_id=user.id,
-                        text=f"⚠️ **ক্যাশে আপডেট ব্যর্থ**\n\n"
-                             f"❌ রিকোয়েস্ট `#{request_id}` প্রসেস করা যায়নি\n"
-                             f"🎬 মুভি: {request_data['full_query']}\n"
-                             f"ℹ️ ব্লগারে এখনও এই মুভি নেই\n\n"
-                             f"📝 ম্যানুয়ালি আপলোড করে আবার চেষ্টা করুন",
-                        parse_mode='Markdown'
-                    )
-                except Exception as e:
-                    print(f"⚠️ এডমিন এরর মেসেজ এরর: {e}")
-            
-        elif callback_data.startswith("req_later_"):
-            request_id = int(callback_data.replace("req_later_", ""))
-            await query.answer(f"রিকোয়েস্ট #{request_id} পরে দেখা হবে", show_alert=True)
-            
-        elif callback_data.startswith("req_reject_"):
-            request_id = int(callback_data.replace("req_reject_", ""))
-            await query.answer(f"রিকোয়েস্ট #{request_id} রিজেক্ট করা হয়েছে", show_alert=True)
-
-
-    
-    if callback_data.startswith("confirm_"):
-        # ইয়েস বাটন - প্রস্তাবিত নামে সার্চ করবে
-        movie_title = callback_data.replace("confirm_", "")
-        results = search_engine.search_movies(movie_title)
-        
-        if results:
-            # ✅ প্রথমে বটের সাজেশন মেসেজটি আপডেট করবে (বাটন রিমুভ করে)
-            await query.edit_message_text(
-                f"✅ <b>{query.from_user.first_name}</b>, আপনার মুভিটি পাওয়া গেছে!",
-                parse_mode='HTML',
-                reply_markup=None  # ✅ বাটন রিমুভ করবে
-            )
-            
-            # ✅ তারপর ইউজারের মেসেজের রিপ্লাই হিসেবে মুভি পাঠাবে
-            movie = results[0]
-            message_text = format_movie_text(movie)
-            
-            # ইউজারের আসল মেসেজের মেসেজ আইডি নিবে
-            original_message_id = None
-            if query.message.reply_to_message:
-                original_message_id = query.message.reply_to_message.message_id
-            
-            if movie.get('image_url'):
-                try:
-                    await context.bot.send_photo(
-                        chat_id=query.message.chat_id,
-                        photo=movie['image_url'],
-                        caption=message_text,
-                        parse_mode='HTML',
-                        reply_markup=create_movie_results_keyboard([movie]),
-                        reply_to_message_id=original_message_id
-                    )
-                except Exception as e:
-                    await context.bot.send_message(
-                        chat_id=query.message.chat_id,
-                        text=message_text,
-                        parse_mode='HTML',
-                        reply_markup=create_movie_results_keyboard([movie]),
-                        reply_to_message_id=original_message_id
-                    )
-            else:
-                await context.bot.send_message(
-                    chat_id=query.message.chat_id,
-                    text=message_text,
-                    parse_mode='HTML',
-                    reply_markup=create_movie_results_keyboard([movie]),
-                    reply_to_message_id=original_message_id
-                )
-        else:
-            await query.edit_message_text("❌ মুভিটি এখনও unavailable")
-            
-    elif callback_data.startswith("deny_"):
-        original_query = callback_data.replace("deny_", "")
-        
-        # ১. বাটন রিমুভ করে গাইডেন্স মেসেজ দেখাবে
-        guidance_message = f"""
-    🔍 '<b>{original_query}</b>' আপনার পছন্দের মুভি না?
-
-    🎯 <b>সঠিকভাবে সার্চ করার টিপস:</b>
-    • শুধু মুভির <b>মূল নাম</b> লিখুন
-    • <b>ইংলিশে</b> লিখুন (বাংলা থেকে অটো ট্রান্সলেশন হবে)
-    • <b>স্পেসিং</b> এবং <b>বানান</b> চেক করুন
-
-    📝 <b>উদাহরণ:</b>
-    <code>Diesel</code> (<i>❌ Diesel full movie</i>)
-    <code>Bahubali</code> (<i>❌ বাহুবলী</i>)
-
-    <b>এভাবে চেষ্টা করার পর যদি মুভি না পান তাহলে মুভি রিকোয়েস্ট করুন নিচের দেয়া নিয়মে</b>
-
-    <code>/req RRR 2023</code>
-    <code>/req Diesel 2025</code>
-
-    🔄 <b>আবার চেষ্টা করুন</b>
-    """
-        
-        await query.edit_message_text(
-            guidance_message,
-            parse_mode='HTML',
-            reply_markup=None  # সব বাটন রিমুভ
-        )
-
-    elif callback_data.startswith("suggest_"):
-        selected_movie = callback_data.replace("suggest_", "")
-        results = search_engine.search_movies(selected_movie)
-        
-        if results and len(results) > 1:
-            # প্রথম মুভি বাদ দিয়ে দ্বিতীয় মুভি সাজেস্ট করবে
-            alternative_movie = results[1]  # কাছাকাছি আরেকটি মুভি
-            
-            await query.edit_message_text(
-                f"🤔 আপনি কি '<b>{alternative_movie['title']}</b>' খুঁজছেন?",
-                parse_mode='HTML',
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton(
-                            f"✅ হ্যাঁ, {alternative_movie['title']}",
-                            callback_data=f"confirm_{alternative_movie['title']}"
-                        ),
-                        InlineKeyboardButton(
-                            "❌ না, অন্য মুভি", 
-                            callback_data="show_search_guide"
-                        )
-                    ]
-                ])
-            )
-        else:
-            await query.edit_message_text(
-                "😔 আর কোনো সাজেশন নেই। নতুন করে সার্চ করুন।",
-                parse_mode='HTML'
-            )
-
-    elif callback_data == "show_search_guide":
-        search_guide = """
-    🎬 <b>সঠিকভাবে মুভি সার্চ করার গাইড</b>
-
-    📝 <b>সার্চ ফরম্যাট:</b>
-    • শুধু মুভির নাম (বছর/কোয়ালিটি না)
-    • ইংলিশে লিখুন
-    • সংক্ষিপ্ত এবং সঠিক নাম
-
-    🔍 <b>জনপ্রিয় মুভি উদাহরণ:</b>
-    <code>Diesel</code> <code>RRR</code> 
-
-    ❌ <b>ভুল উপায়:</b>
-    <code>Diesel full movie hindi</code> → <code>Diesel</code>
-    <code>Avatar the way of water</code> → <code>Avatar</code>  
-    <code>বাহুবলী</code> → <code>Bahubali</code>
-
-    🔄 <b>এখনই ট্রাই করুন সরাসরি মুভির নাম লেখুন নিজের মত করে</b>
-    <code>Diesel</code> অথবা, <code>RRR</code>
-    অথবা,
-    <code>/search মুভির_নাম</code>
-    """
-        
-        await query.edit_message_text(
-            search_guide,
-            parse_mode='HTML',
-            reply_markup=None
-        )
-
-    elif callback_data == "help_search":
-        await query.message.reply_text(
-            "🆘 <b>সার্চ সাহায্য:</b>\n\n"
-            "• <b>সঠিক নাম</b> ব্যবহার করুন\n"
-            "• বাংলা বা ইংলিশ যেকোন ভাষায় লিখুন\n" 
-            "• স্পেলিং ভুল হলে বট অটো করেক্ট করবে\n"
-            "• সমস্যা হলে এডমিনকে জানান",
-            parse_mode='HTML'
-        )
-
-    elif callback_data == "link_coming_soon":
-        await query.answer("⚠️ লিংক খুব দ্রুত অ্যাড করা হবে। অনুগ্রহ করে অপেক্ষা করুন...", show_alert=True)
 
 # গ্রুপে নতুন মেম্বার জয়েন করলে ওয়েলকাম মেসেজ
 async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2019,6 +1903,291 @@ async def force_refresh_command(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(f"❌ কমান্ড এরর: {str(e)[:200]}")
 
 
+# ========== USER-SPECIFIC BUTTON FUNCTIONS ==========
+# এই পুরো ব্লকটা নতুন করে যোগ করো (রিমুভ করার কিছু নেই)
+
+def create_user_specific_keyboard(buttons_data, user_id):
+    """
+    ইউজার-স্পেসিফিক বাটন তৈরি করে
+    buttons_data = [("text1", "action1"), ("text2", "action2")]
+    """
+    keyboard = []
+    for text, action in buttons_data:
+        callback_data = f"{action}_{user_id}"
+        keyboard.append([InlineKeyboardButton(text, callback_data=callback_data)])
+    return InlineKeyboardMarkup(keyboard)
+
+
+def encode_callback_with_user(callback_data, user_id):
+    """ক্যালব্যাক ডাটার সাথে ইউজার আইডি এনকোড করে"""
+    return f"{callback_data}_{user_id}"
+
+
+def extract_user_from_callback(callback_data):
+    """ক্যালব্যাক ডাটা থেকে ইউজার আইডি এক্সট্রাক্ট করে"""
+    parts = callback_data.split('_')
+    try:
+        user_id = int(parts[-1])
+        original_callback = '_'.join(parts[:-1])
+        return original_callback, user_id
+    except:
+        return callback_data, None
+
+
+
+async def handle_movie_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, movie_title, user):
+    """ইউজার সাজেশন থেকে মুভি সিলেক্ট করলে"""
+    query = update.callback_query
+    
+    results = local_ai_agent.search_movies(movie_title)
+    if results:
+        movie = results[0]['movie']
+        
+        if user_profile_manager:
+            user_profile_manager.update_from_search(user.id, movie)
+        
+        await send_movie_result_with_image(update, movie)
+        
+        await query.message.edit_text(
+            f"✅ @{user.username or user.first_name}, আপনার সিলেক্ট করা মুভি: <b>{movie_title}</b>",
+            parse_mode='HTML'
+        )
+
+
+async def send_suggestion_with_confirmation(update, results, original_query):
+    """৩টি মুভি কার্ড দেখিয়ে কনফার্মেশন নেয়"""
+    user = update.effective_user
+    user_id = user.id
+    
+    # ৩টি কার্ড পাঠাও
+    movies_to_show = [item['movie'] for item in results[:3]]
+    await send_multiple_movie_cards(update, movies_to_show)
+    
+    # ইউজার-স্পেসিফিক বাটন তৈরি
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "✅ হ্যাঁ, একটি আছে", 
+                callback_data=encode_callback_with_user(f"suggest_yes_{original_query}", user_id)
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "❌ না, কোনটিই না", 
+                callback_data=encode_callback_with_user(f"suggest_no_{original_query}", user_id)
+            )
+        ]
+    ]
+    
+    await update.message.reply_text(
+        f"❓ @{user.username or user.first_name}, আপনার **'{original_query}'** কি উপরের ৩টির মধ্যে আছে?",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
+    )
+
+# ========== ADMIN ACTION HANDLERS ==========
+
+async def handle_admin_done(update: Update, context: ContextTypes.DEFAULT_TYPE, request_id, admin_user):
+    """এডমিন 'Done' ক্লিক করলে"""
+    query = update.callback_query
+    
+    print(f"✅ এডমিন 'Done' ক্লিক করেছেন: {admin_user.first_name} - রিকোয়েস্ট #{request_id}")
+    
+    request_data = None
+    all_requests = request_manager.requests_data.get('requests', [])
+    for req in all_requests:
+        if req['request_id'] == request_id:
+            request_data = req
+            break
+    
+    if not request_data:
+        await query.answer("❌ রিকোয়েস্ট ডাটা পাওয়া যায়নি", show_alert=True)
+        return
+    
+    request_manager.mark_fulfilled(request_id)
+    
+    # এডমিন মেসেজ আপডেট
+    await query.edit_message_text(
+        f"✅ রিকোয়েস্ট #{request_id} প্রসেস করা হয়েছে!\n\n"
+        f"🎬 মুভি: {request_data['full_query']}\n"
+        f"👤 ইউজার: @{request_data['username'] if request_data['username'] else 'Unknown'}"
+    )
+    
+    # ইউজারকে নোটিফিকেশন (সঠিক মেনশন সহ)
+    try:
+        group_id = config.GROUP_ID
+        if group_id:
+            # ✅ সঠিকভাবে ইউজার মেনশন করা
+            if request_data['username']:
+                user_mention = f"@{request_data['username']}"
+            else:
+                user_mention = f"<a href='tg://user?id={request_data['user_id']}'>{request_data['full_name']}</a>"
+            
+            notification = f"""
+{user_mention} 🎉 <b>শুভসংবাদ!</b>
+
+✅ আপনার রিকোয়েস্ট করা <b>{request_data['full_query']}</b> মুভি আপলোড করা হয়েছে!
+
+🔍 <b>এখনই সার্চ করুন:</b> <code>/search {request_data['movie_name']}</code>
+"""
+            
+            await context.bot.send_message(
+                chat_id=group_id,
+                text=notification,
+                parse_mode='HTML'
+            )
+            print(f"✅ ইউজারকে গ্রুপে নোটিফাই করা হয়েছে: {request_data['user_id']}")
+    except Exception as e:
+        print(f"❌ ইউজার নোটিফিকেশন এরর: {e}")
+
+
+async def handle_admin_later(update: Update, context: ContextTypes.DEFAULT_TYPE, request_id, admin_user):
+    """এডমিন 'Later' ক্লিক করলে"""
+    query = update.callback_query
+    
+    await query.edit_message_text(
+        query.message.text + "\n\n⏳ পরে দেখা হবে।",
+        reply_markup=None
+    )
+    await query.answer(f"রিকোয়েস্ট #{request_id} পরে দেখা হবে")
+
+
+async def handle_admin_reject(update: Update, context: ContextTypes.DEFAULT_TYPE, request_id, admin_user):
+    """এডমিন 'Reject' ক্লিক করলে"""
+    query = update.callback_query
+    
+    # রিকোয়েস্ট ডাটা খুঁজে বের করো
+    request_data = None
+    all_requests = request_manager.requests_data.get('requests', [])
+    for req in all_requests:
+        if req['request_id'] == request_id:
+            request_data = req
+            break
+    
+    if not request_data:
+        await query.answer("❌ রিকোয়েস্ট ডাটা পাওয়া যায়নি", show_alert=True)
+        return
+    
+    # স্ট্যাটাস আপডেট (রিজেক্ট)
+    if hasattr(request_manager, 'mark_rejected'):
+        request_manager.mark_rejected(request_id)
+    
+    # এডমিনকে কনফার্মেশন
+    await query.edit_message_text(
+        f"❌ রিকোয়েস্ট `#{request_id}` রিজেক্ট করা হয়েছে।",
+        parse_mode='Markdown'
+    )
+    
+    # ইউজারকে জানাও
+    try:
+        group_id = config.GROUP_ID
+        if group_id:
+            user_mention = f"@{request_data['username']}" if request_data['username'] else request_data['full_name']
+            
+            notification = f"""
+{user_mention} 😔 আপনার রিকোয়েস্ট করা **{request_data['full_query']}** বর্তমানে আপলোড করা সম্ভব নয়।
+
+কারণ: এডমিন কর্তৃক রিজেক্ট করা হয়েছে।
+"""
+            
+            await context.bot.send_message(
+                chat_id=group_id,
+                text=notification,
+                parse_mode='Markdown'
+            )
+            print(f"✅ ইউজারকে রিজেক্ট নোটিফিকেশন পাঠানো হয়েছে")
+    except Exception as e:
+        print(f"❌ ইউজার নোটিফিকেশন এরর: {e}")
+    
+    await query.answer("❌ রিজেক্ট করা হয়েছে")
+
+
+async def ask_confirmation_after_cards(update: Update, original_query, matched_movies):
+    """৩টি কার্ড দেখানোর পর কনফার্মেশন জিজ্ঞাসা করে"""
+    user = update.effective_user
+    user_mention = f"@{user.username}" if user.username else user.first_name
+    
+    # বাটন তৈরি
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "✅ হ্যাঁ, একটি আছে", 
+                callback_data=encode_callback_with_user(f"confirm_yes_{original_query}", user.id)
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "❌ না, কোনটিই না", 
+                callback_data=encode_callback_with_user(f"confirm_no_{original_query}", user.id)
+            )
+        ]
+    ]
+    
+    # মেসেজ তৈরি (HTML ফরম্যাট)
+    message = f"❓ {user_mention}, আপনার '<b>{original_query}</b>' কি উপরের ৩টির মধ্যে আছে?"
+    
+    await update.message.reply_text(
+        text=message,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
+
+async def handle_confirmation_yes(update: Update, context: ContextTypes.DEFAULT_TYPE, original_query):
+    """ইউজার বলেছে হ্যাঁ, একটি আছে - শুধু নোটিফিকেশন দেয়"""
+    query = update.callback_query
+    user = query.from_user
+    
+    await query.message.edit_text(
+        f"👍 @{user.username or user.first_name}, উপরের মুভিগুলোর মধ্যে আপনারটি সিলেক্ট করুন।",
+        parse_mode='Markdown'
+    )
+    
+    # শুধু নোটিফিকেশন দাও, কোনো কার্ড নয়
+    await query.answer("✅ উপরের মুভিগুলোর মধ্যে আপনারটি সিলেক্ট করুন")
+
+
+async def handle_confirmation_no(update: Update, context: ContextTypes.DEFAULT_TYPE, original_query, user):
+    """ইউজার বলেছে কোনটিই না → রিকোয়েস্ট নাও"""
+    query = update.callback_query
+    
+    # ✅ ডুপ্লিকেট চেক
+    is_duplicate, existing = request_manager.check_duplicate_request(user.id, original_query)
+    
+    if is_duplicate:
+        # স্ট্যাটাস অনুযায়ী ইমোজি
+        status_emoji = "✅" if existing['status'] == 'fulfilled' else "⏳" if existing['status'] == 'pending' else "❌"
+        
+        await query.message.edit_text(
+            f"ℹ️ @{user.username or user.first_name}, আপনি ইতিমধ্যে '<b>{original_query}</b>' রিকোয়েস্ট করেছেন!\n\n"
+            f"{status_emoji} <b>স্ট্যাটাস:</b> {existing['status']}\n"
+            f"🆔 <b>রিকোয়েস্ট আইডি:</b> #{existing['request_id']}\n"
+            f"📅 <b>সময়:</b> {existing['request_time'][:10]}",
+            parse_mode='HTML'
+        )
+        await query.answer("✅ ইতিমধ্যে রিকোয়েস্ট করা হয়েছে")
+        return
+    
+    # নতুন রিকোয়েস্ট
+    request_data = request_manager.add_request(
+        user_id=user.id,
+        username=user.username,
+        full_name=user.first_name,
+        movie_query=original_query
+    )
+    
+    if request_data:
+        await query.message.edit_text(
+            f"📨 @{user.username or user.first_name}, আপনার '<b>{original_query}</b>' রিকোয়েস্ট নেওয়া হয়েছে.\n\n"
+            f"🆔 <b>রিকোয়েস্ট আইডি:</b> #{request_data['request_id']}\n"
+            f"⏳ <b>স্ট্যাটাস:</b> পেন্ডিং\n\n"
+            f"👑 এডমিনকে জানানো হয়েছে. আপলোড হলে জানিয়ে দেব.",
+            parse_mode='HTML'
+        )
+        
+        await admin_notifier.notify_admin_with_buttons(request_data, context.bot)
+    else:
+        await query.message.edit_text("❌ রিকোয়েস্ট নিতে সমস্যা হয়েছে। পরে চেষ্টা করুন।")
+    
 
 # মেইন ফাংশন
 def main():
@@ -2113,6 +2282,7 @@ def main():
         
         except Exception as e:
             print(f"❌ ড্যাশবোর্ড ইনিশিয়ালাইজ এরর: {e}")
+            
     
     # ৩ সেকেন্ড পর ড্যাশবোর্ড তৈরি করব
     async def delayed_dashboard():
