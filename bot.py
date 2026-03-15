@@ -209,120 +209,168 @@ async def handle_greeting_response(update: Update, context: ContextTypes.DEFAULT
 # bot.py - handle_message() ফাংশন সম্পূর্ণ রিপ্লেস করুন
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """AI-চালিত মেসেজ হ্যান্ডলার - ফাইনাল ভার্সন"""
+    """আপডেটেড মেসেজ হ্যান্ডলার - ক্লাসিফায়ার ও কনফিডেন্স স্কোর সহ"""
     user_message = update.message.text
     user = update.effective_user
     user_id = user.id
-    username = user.username
-    first_name = user.first_name
+    chat_type = update.effective_chat.type
     
-    print(f"\n📨 মেসেজ: '{user_message[:50]}...' from {first_name}")
+    print(f"\n📨 মেসেজ: '{user_message[:50]}...' from {user.first_name} in {chat_type}")
     
-    # ১. গ্রুপে লিংক চেক
-    if update.message.chat.type in ['group', 'supergroup']:
+    # ১. গ্রুপে লিংক চেক (স্প্যাম প্রটেকশন)
+    if chat_type in ['group', 'supergroup']:
         if contains_any_link(user_message or ""):
             is_admin = await is_user_admin(update, context)
             if not is_admin:
                 await mute_user_permanently(update, context)
                 return
     
-    # ২. AI দিয়ে ইন্টেন্ট ডিটেক্ট
-    intent_data = local_ai_agent.detect_intent(user_message)
-    intent = intent_data["intent"]
-    query = intent_data.get("movie_name", user_message)
+    # ২. মেসেজ ক্লাসিফাই করুন (ইম্প্রুভড ক্লাসিফায়ার ব্যবহার)
+    classifier_result = await message_classifier.classify(
+        text=user_message,
+        user_id=user_id,
+        chat_type=chat_type
+    )
     
-    print(f"🧠 Intent: {intent}, Query: {query}")
+    intent = classifier_result['intent']
+    confidence = classifier_result['confidence']
+    reason = classifier_result['reason']
     
-    # ৩. ইন্টেন্ট অনুযায়ী অ্যাকশন
-    if intent == "greeting":
-        user_mention = f"@{username}" if username else first_name
-        greeting_text = f"""🎬 Hey! {user_mention} মুভি লাভার! 
-
-👋 হ্যালো! গ্রুপে মেসেজ করার জন্য আপনাকে ধন্যবাদ! 🎉 
-আমি মুভি খুঁজে দেই। আপনার পছন্দের মুভির নাম লিখুন।
-
-<code>Diesel</code>     <code>Kaantha</code>
-
-সঠিক মুভির নাম লিখুন গ্রুপে"""
+    print(f"🧠 Classifier: intent={intent}, confidence={confidence:.2f}, reason={reason}")
+    
+    # ৩. কনফিডেন্স চেক - কম আত্মবিশ্বাসে চুপ থাকুন
+    MIN_CONFIDENCE = 0.7  # ৭০% এর নিচে রেসপন্স দেবেন না
+    
+    if confidence < MIN_CONFIDENCE and chat_type != 'private':
+        print(f"🤐 Low confidence ({confidence}), staying silent")
+        return
+    
+    # ৪. ইন্টেন্ট অনুযায়ী অ্যাকশন
+    if intent == 'COMMAND':
+        # কমান্ড অন্য হ্যান্ডলার handle করবে
+        return
+    
+    elif intent == 'GREETING':
+        user_mention = f"@{user.username}" if user.username else user.first_name
+        greeting_text = f"""👋 {user_mention}! আমি একটি মুভি ফাইন্ডার বট।
+মুভি খুঁজতে শুধু নাম লিখুন (যেমন: <code>Diesel</code>)
+অথবা /search কমান্ড ব্যবহার করুন।"""
         
         await update.message.reply_text(
             text=greeting_text,
-            reply_markup=create_welcome_keyboard(),
             parse_mode='HTML',
             reply_to_message_id=update.message.message_id
         )
         return
     
-    elif intent == "help":
-        await help_command(update, context)
+    elif intent == 'QUESTION':
+        await update.message.reply_text(
+            "❓ আমি শুধু মুভি সম্পর্কিত তথ্য দিতে পারি।\nমুভির নাম লিখলে ডাউনলোড লিংক দেব।",
+            reply_to_message_id=update.message.message_id
+        )
         return
     
-    elif intent == "movie_request":
-        # যদি নাম না দিয়ে শুধু "মুভি চাই" বলে
-        if not query or len(query.strip()) < 2:
-            # ট্রেন্ডিং ৩টি মুভি কার্ড দেখাও
+    elif intent == 'THANKS':
+        await update.message.reply_text(
+            "😊 আপনাকে ধন্যবাদ! মুভি লাগলে জানাবেন।",
+            reply_to_message_id=update.message.message_id
+        )
+        return
+    
+    elif intent == 'MOVIE_QUERY':
+        query = classifier_result.get('movie_name', user_message)
+        await handle_movie_search(update, context, query)
+        return
+    
+    elif intent == 'MOVIE_REQUEST':
+        query = classifier_result.get('movie_name', user_message)
+        if len(query.strip()) < 2:
             await send_trending_movies_cards(update, context)
-            return
-        
-        # নইলে রিকোয়েস্ট নাও
-        context.args = [query]
-        await request_command(update, context)
-        return
-    
-    elif intent == "movie_search":
-        if not local_ai_agent:
-            await update.message.reply_text("❌ সার্চ সিস্টেম প্রস্তুত নয়।")
-            return
-        
-        results = local_ai_agent.search_movies(query)
-        
-        if results:
-            top_score = results[0]['score']
-            top_movie = results[0]['movie']
-            
-            # ইউজার প্রোফাইল আপডেট
-            if user_profile_manager:
-                user_profile_manager.update_from_search(user_id, top_movie)
-            
-            # ✅ কেস ১: স্কোর ৯০% - ১০০%
-            if top_score >= 90:
-                print(f"🎯 High confidence match ({top_score}%) - {top_movie['title']}")
-                
-                series_movies = search_engine.get_movie_series(top_movie['title'])
-                
-                if series_movies and len(series_movies) > 1:
-                    print(f"📚 Found {len(series_movies)} episodes/parts")
-                    for movie in series_movies:
-                        await send_movie_result_with_image(update, movie)
-                else:
-                    await send_movie_result_with_image(update, top_movie)
-                
-                if learning_system and query.lower() != top_movie['title'].lower():
-                    learning_system.learn_spelling(query, top_movie['title'])
-                
-                return
-            
-            # ✅ কেস ২: স্কোর ৫০% - ৮৯% (৩টি কার্ড + কনফার্মেশন)
-            elif top_score >= 50 and top_score < 90:
-                print(f"🔍 Mid confidence match ({top_score}%) - Showing 3 cards + confirmation")
-                
-                # ৩টি মুভি কার্ড দেখাও
-                movies_to_show = [item['movie'] for item in results[:3]]
-                await send_multiple_movie_cards(update, movies_to_show)
-                
-                # কনফার্মেশন জিজ্ঞাসা করো (ইউজার মেনশন সহ)
-                await ask_confirmation_after_cards(update, query, results[:3])
-                return
-            
-            # ✅ কেস ৩: স্কোর ৫০% এর নিচে
-            else:
-                print(f"🔍 Very low confidence match ({top_score}%) - Asking to search again")
-                await send_low_confidence_message(update, query)
-                return
-        
         else:
-            await send_trending_movies_cards(update, context)
-            return
+            context.args = [query]
+            await request_command(update, context)
+        return
+    
+    elif intent == 'SPAM' or intent == 'BLACKLISTED':
+        # স্প্যাম/ব্ল্যাকলিস্টেড মেসেজ - চুপ থাকুন
+        return
+    
+    else:  # UNKNOWN
+        # অজানা মেসেজ - শুধু প্রাইভেট চ্যাটে রেসপন্স দিন
+        if chat_type == 'private':
+            await update.message.reply_text(
+                "🤔 আমি বুঝতে পারিনি। মুভির নাম লিখুন অথবা /help দেখুন।"
+            )
+        return
+
+
+# নতুন ফাংশন যোগ করুন - handle_movie_search
+async def handle_movie_search(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
+    """মুভি সার্চ হ্যান্ডলার"""
+    user = update.effective_user
+    user_id = user.id
+    chat_type = update.effective_chat.type
+    
+    print(f"🔍 Searching for: '{query}'")
+    
+    if not local_ai_agent:
+        await update.message.reply_text("❌ সার্চ সিস্টেম প্রস্তুত নয়।")
+        return
+    
+    results = local_ai_agent.search_movies(query)
+    
+    if results:
+        # মুভি পাওয়া গেলে রেজাল্ট দেখান
+        top_score = results[0]['score']
+        top_movie = results[0]['movie']
+        
+        if user_profile_manager:
+            user_profile_manager.update_from_search(user_id, top_movie)
+        
+        if top_score >= 85:
+            series_movies = search_engine.get_movie_series(top_movie['title'])
+            if series_movies and len(series_movies) > 1:
+                for movie in series_movies:
+                    await send_movie_result_with_image(update, movie)
+            else:
+                await send_movie_result_with_image(update, top_movie)
+            
+            if learning_system and query.lower() != top_movie['title'].lower():
+                learning_system.learn_spelling(query, top_movie['title'])
+        else:
+            movies_to_show = [item['movie'] for item in results[:3]]
+            await send_multiple_movie_cards(update, movies_to_show)
+            await ask_confirmation_after_cards(update, query, results[:3])
+    else:
+        # **৬ নম্বর সমস্যার সমাধান: মুভি না পেলে হেল্পফুল মেসেজ**
+        user_name = update.effective_user.first_name
+        mention = f"@{update.effective_user.username}" if update.effective_user.username else user_name
+        
+        help_message = f"""
+😔 **{mention}**, '{query}' নামে কোনো মুভি খুঁজে পাইনি।
+
+📌 **কেন এমন হতে পারে:**
+• বানান ভুল হয়েছে (যেমন: Parasakthi → {query})
+• মুভিটি এখনও আমাদের ডাটাবেজে যোগ হয়নি
+• শুধু পার্ট/সিরিজ নাম লিখেছেন (মূল নাম না)
+
+💡 **পরামর্শ:**
+✅ সঠিক বানান দিয়ে আবার সার্চ করুন
+✅ ইংরেজিতে লিখুন (বাংলা অক্ষরে না)
+✅ শুধু মুভির মূল নাম লিখুন (যেমন: Parasakthi)
+✅ বছর বাদ দিন (যেমন: Parasakthi 2026 → Parasakthi)
+
+📝 **রিকোয়েস্ট করতে:**
+<code>/req {query}</code>
+
+👆 উপরের কমান্ডটি কপি করে সেন্ড করুন, এডমিন দেখবেন।
+"""
+        
+        await update.message.reply_text(
+            help_message,
+            parse_mode='Markdown',
+            reply_to_message_id=update.message.message_id
+        )
         
 
 async def send_low_confidence_message(update: Update, original_query):
@@ -1023,57 +1071,57 @@ local_ai_agent = None   # ✅ এই লাইনটা ঠিক আছে (glo
 # bot.py - initialize_services() ফাংশন আপডেট করুন
 
 def initialize_services():
-    """সার্ভিসেস ইনিশিয়ালাইজ করবে - ফিক্সড ভার্সন"""
+    """সার্ভিসেস ইনিশিয়ালাইজ করবে - আপডেটেড ভার্সন"""
     global cache_manager, search_engine, blogger_api, auto_refresher
     global message_classifier, channel_poster, request_manager, admin_notifier
     global admin_menu, user_profile_manager, learning_system
     global context_memory, recommendation_engine
-    global local_ai_agent  # ✅ ১. এই লাইনটা যোগ করো
+    global local_ai_agent
+    
+    print("="*50)
+    print("🔄 সার্ভিস ইনিশিয়ালাইজেশন শুরু...")
     
     # ========== বেসিক সার্ভিস ==========
     cache_manager = CacheManager()
     search_engine = SearchEngine(cache_manager)
+    print("✅ Cache & Search Engine Ready")
     
     # ব্লগার API setup
     blogger_api = BloggerAPI(config.BLOGGER_BLOGS)
+    print("✅ Blogger API Ready")
     
     # চ্যানেল পোস্টার
     from channel_poster import ChannelPoster
     channel_poster = ChannelPoster(cache_manager)
-    print("✅ চ্যানেল পোস্টার ইনিশিয়ালাইজ হয়েছে")
+    print("✅ Channel Poster Ready")
     
     # রিকোয়েস্ট ম্যানেজার
     request_manager = RequestManager(config.REQUEST_FILE)
-    print("✅ রিকোয়েস্ট ম্যানেজার ইনিশিয়ালাইজ হয়েছে")
+    print("✅ Request Manager Ready")
     
     # এডমিন নোটিফায়ার
     admin_notifier = AdminNotifier(
         admin_user_ids=config.ADMIN_USER_IDS,
         notification_channel_id=config.REQUEST_NOTIFICATION_CHANNEL
     )
-    print("✅ এডমিন নোটিফায়ার ইনিশিয়ালাইজ হয়েছে")
+    print("✅ Admin Notifier Ready")
     
-    # ========== প্রোফাইল ও লার্নিং সিস্টেম (আগে) ==========
-    # ✅ ২. প্রথমে এগুলো ইনিশিয়ালাইজ করো
+    # ========== প্রোফাইল ও লার্নিং সিস্টেম ==========
     user_profile_manager = UserProfileManager(config.USER_PROFILES_FILE)
-    print("✅ User Profile Manager initialized")
-    
     learning_system = LearningSystem(config.LEARNING_CACHE_FILE)
-    print("✅ Learning System initialized")
-    
     context_memory = ContextMemory()
-    print("✅ Context Memory initialized")
+    print("✅ Profile & Learning Systems Ready")
     
-    # ========== লোকাল এআই এজেন্ট (এখন) ==========
-    # ✅ ৩. এখন লোকাল এআই এজেন্ট বানাও (সব ডিপেন্ডেন্সি রেডি)
+    # ========== লোকাল এআই এজেন্ট ==========
     from local_ai_agent import LocalAIAgent
     local_ai_agent = LocalAIAgent(cache_manager, user_profile_manager, learning_system)
-    print("✅ Local AI Agent initialized")
+    print("✅ Local AI Agent Ready")
     
-    # ========== মেসেজ ক্লাসিফায়ার (আপডেটেড) ==========
-    # ✅ ৪. লোকাল এজেন্ট দিয়ে মেসেজ ক্লাসিফায়ার বানাও
+    # ========== মেসেজ ক্লাসিফায়ার (ইম্প্রুভড) ==========
+    # নতুন আপডেটেড ক্লাসিফায়ার ব্যবহার
+    from message_classifier import MessageClassifier
     message_classifier = MessageClassifier(cache_manager, local_ai_agent)
-    print("✅ Message Classifier initialized")
+    print("✅ Improved Message Classifier Ready")
     
     # ========== রিকমেন্ডেশন ইঞ্জিন ==========
     recommendation_engine = RecommendationEngine(
@@ -1081,7 +1129,7 @@ def initialize_services():
         user_profile_manager, 
         learning_system
     )
-    print("✅ Recommendation Engine initialized")
+    print("✅ Recommendation Engine Ready")
     
     # ========== অটো রিফ্রেশার ==========
     from auto_refresher import AutoRefresher
@@ -1091,24 +1139,25 @@ def initialize_services():
         search_engine, 
         request_manager
     )
-    print("✅ অটো রিফ্রেশার ইনিশিয়ালাইজ হয়েছে")
+    print("✅ Auto Refresher Ready")
     
     # ========== এডমিন মেনু ==========
     admin_menu = ShortAdminMenu()
-    print("✅ এডমিন মেনু সিস্টেম Ready")
+    print("✅ Admin Menu Ready")
     
     # ========== ব্লগার থেকে ডাটা লোড ==========
     if cache_manager.needs_update() or cache_manager.get_movie_count() == 0:
-        print("🔄 ব্লগার থেকে রিয়েল মুভি ডাটা লোড করছি...")
+        print("🔄 Loading real movie data from Blogger...")
         real_movies = blogger_api.get_all_posts_from_all_blogs()
         
         if real_movies:
             cache_manager.update_movies(real_movies)
-            print(f"✅ {len(real_movies)} টি রিয়েল মুভি লোড হয়েছে")
+            print(f"✅ {len(real_movies)} movies loaded")
         else:
-            print("❌ ব্লগার থেকে মুভি লোড হয়নি")
+            print("⚠️ No movies loaded from Blogger")
     
-    print(f"✅ সব সার্ভিস Ready: {cache_manager.get_movie_count()} টি মুভি")
+    print(f"✅ All Services Ready! Total Movies: {cache_manager.get_movie_count()}")
+    print("="*50)
 
 # bot.py-তে এই ফাংশন যোগ করুন
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

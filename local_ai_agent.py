@@ -13,44 +13,73 @@ class LocalAIAgent:
         self.learning = learning_system
         self.cache_file = "data/movies_cache.json"
         
-    def detect_intent(self, message):
-        """মেসেজের ইন্টেন্ট ডিটেক্ট করে"""
-        message = message.lower().strip()
-        
-        # গ্রিটিংস চেক
-        greetings = ['হাই', 'হ্যালো', 'হাই', 'hello', 'hi', 'হ্যালো', 'সালাম', 'ওয়াসা']
-        if any(g in message for g in greetings):
-            return {
-                "intent": "greeting",
-                "movie_name": None,
-                "confidence": 1.0
+        async def detect_intent(self, message, user_id=None):
+            """মেসেজের ইন্টেন্ট ডিটেক্ট করে (ASYNC ভার্সন)"""
+            message = message.lower().strip()
+            
+            # কনফিডেন্স স্কোর কালেকশন
+            scores = {
+                'greeting': 0.0,
+                'help': 0.0,
+                'movie_request': 0.0,
+                'movie_search': 0.0,
+                'conversation': 0.0
             }
-        
-        # হেল্প চেক
-        help_words = ['সাহায্য', 'help', 'কিভাবে', 'how to', 'instructions']
-        if any(h in message for h in help_words):
-            return {
-                "intent": "help",
-                "movie_name": None,
-                "confidence": 1.0
+            
+            # ১. গ্রিটিংস চেক
+            greetings = ['হাই', 'হ্যালো', 'হেলো', 'হাই', 'hello', 'hi', 'সালাম', 
+                        'ওয়াসা', 'কেমন', 'আছেন', 'আছো']
+            greeting_matches = sum(1 for g in greetings if g in message)
+            if greeting_matches > 0:
+                scores['greeting'] = min(0.8 + (greeting_matches * 0.1), 1.0)
+            
+            # ২. হেল্প চেক
+            help_words = ['সাহায্য', 'help', 'কিভাবে', 'how to', 'instructions', 'কি ভাবে']
+            if any(h in message for h in help_words):
+                scores['help'] = 0.9
+            
+            # ৩. রিকোয়েস্ট চেক
+            request_words = ['চাই', 'লাগবে', 'দরকার', 'request', 'req', 'আনতে হবে', 'পাব']
+            request_matches = sum(1 for r in request_words if r in message)
+            if request_matches > 0:
+                movie_name = self._extract_movie_name_from_request(message)
+                scores['movie_request'] = 0.8 + (request_matches * 0.05)
+            
+            # ৪. মুভি সার্চ চেক (শব্দ সংখ্যা ও প্যাটার্ন)
+            words = message.split()
+            if 1 <= len(words) <= 4 and not any(c in message for c in ['?', 'কি', 'কে']):
+                scores['movie_search'] = 0.7
+            
+            # ৫. কনভারসেশন চেক
+            if '?' in message or any(q in message for q in ['কি', 'কে', 'কেন', 'কখন']):
+                scores['conversation'] = 0.8
+            
+            # সর্বোচ্চ স্কোর খুঁজুন
+            max_intent = max(scores, key=scores.get)
+            max_score = scores[max_intent]
+            
+            # যদি কোনো স্কোর ০.৫ এর নিচে হয়, তাহলে ডিফল্ট
+            if max_score < 0.5:
+                return {
+                    "intent": "unknown",
+                    "movie_name": None,
+                    "confidence": 0.3
+                }
+            
+            # রেজাল্ট তৈরি
+            result = {
+                "intent": max_intent,
+                "confidence": max_score
             }
-        
-        # রিকোয়েস্ট চেক
-        request_words = ['চাই', 'লাগবে', 'দরকার', 'request', 'req', 'আনতে হবে']
-        if any(r in message for r in request_words):
-            movie_name = self._extract_movie_name_from_request(message)
-            return {
-                "intent": "movie_request",
-                "movie_name": movie_name,
-                "confidence": 0.9
-            }
-        
-        # মুভি সার্চ (ডিফল্ট)
-        return {
-            "intent": "movie_search",
-            "movie_name": message,
-            "confidence": 0.8
-        }
+            
+            if max_intent == 'movie_request':
+                result['movie_name'] = self._extract_movie_name_from_request(message)
+            elif max_intent == 'movie_search':
+                result['movie_name'] = message
+            else:
+                result['movie_name'] = None
+            
+            return result
     
     def _extract_movie_name_from_request(self, message):
         """রিকোয়েস্ট থেকে মুভির নাম বের করে"""
