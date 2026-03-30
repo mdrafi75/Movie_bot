@@ -9,6 +9,7 @@ class ShortAdminMenu:
             '/cache_status': '📊 ক্যাশের মুভি সংখ্যা ও আপডেট সময় দেখায়',
             '/refresh_status': '⏰ অটো রিফ্রেশার স্ট্যাটাস দেখায়',
             '/cleanup': '🗑️ ১৫+ দিন পুরানো সফল রিকোয়েস্ট ডিলিট করে',
+            '/bulk_post': '📢 নতুন চ্যানেলে সব মুভি পোস্ট করে (বাল্ক পোস্টিং)',
             '/start': '🚀 বট ওয়েলকাম মেসেজ ও মেনু দেখায়'
         }
     
@@ -47,6 +48,7 @@ class ShortAdminMenu:
                 '/cache_status': '📊',
                 '/refresh_status': '⏰',
                 '/cleanup': '🗑️',
+                '/bulk_post': '📢',
                 '/start': '🚀'
             }
             emoji = emoji_map.get(cmd, '🔹')

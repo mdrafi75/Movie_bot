@@ -85,17 +85,19 @@ class AutoRefresher:
             if success:
                 print(f"✅ {len(new_movies)} টি নতুন মুভি ক্যাশে অ্যাড করা হয়েছে")
                 
-                # নতুন মুভি চ্যানেলে পোস্ট করবে
+                # ✅ নতুন: পোস্টিং অর্ডার রিভার্স করব (সবচেয়ে পুরনো নতুন মুভি প্রথমে পোস্ট হবে)
+                reversed_movies = list(reversed(new_movies))
+                print(f"🔄 পোস্টিং অর্ডার রিভার্স করা হয়েছে: {len(reversed_movies)} টি মুভি")
+                
+                # নতুন মুভি চ্যানেলে পোস্ট করবে (রিভার্স অর্ডারে)
                 try:
                     if hasattr(self, 'bot_app') and self.bot_app:
                         from channel_poster import ChannelPoster
                         channel_poster = ChannelPoster(self.cache_manager)
-                        success_count = await channel_poster.post_multiple_movies(new_movies, self.bot_app.bot)
+                        success_count = await channel_poster.post_multiple_movies(reversed_movies, self.bot_app.bot)
                         print(f"📢 চ্যানেলে নতুন পোস্ট করা হয়েছে: {success_count} টি মুভি")
                 except Exception as e:
                     print(f"❌ চ্যানেলে পোস্ট করতে সমস্যা: {e}")
-        else:
-            print("ℹ️ কোনো নতুন মুভি পাওয়া যায়নি")
         
         # ✅ এডমিন ড্যাশবোর্ড আপডেট করব (গ্রুপে নোটিফিকেশন নেই)
         await self.update_admin_dashboard(

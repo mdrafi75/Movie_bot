@@ -149,3 +149,68 @@ class ChannelPoster:
             if success:
                 success_count += 1
         return success_count
+    
+    async def post_multiple_movies(self, movies, bot, reverse_order=False):
+        """একাধিক মুভি চ্যানেলে পোস্ট করবে"""
+        success_count = 0
+        
+        # অর্ডার রিভার্স করতে চাইলে
+        if reverse_order:
+            movies = list(reversed(movies))
+            print("🔄 পোস্টিং অর্ডার রিভার্স করা হয়েছে")
+        
+        for movie in movies:
+            success = await self.post_movie_to_channel(movie, bot)
+            if success:
+                success_count += 1
+            # রেট লিমিট এড়াতে সামান্য বিরতি
+            import asyncio
+            await asyncio.sleep(1)
+        
+        return success_count
+    
+    async def post_all_movies_to_channel(self, bot, start_from=0, limit=None, reverse_order=False):
+        """ক্যাশের সব মুভি নতুন চ্যানেলে পোস্ট করবে"""
+        all_movies = self.cache_manager.get_all_movies()
+        total = len(all_movies)
+        
+        if total == 0:
+            return 0, "ক্যাশে কোনো মুভি নেই"
+        
+        # লিমিট সেট করা
+        if limit:
+            movies_to_post = all_movies[start_from:start_from + limit]
+        else:
+            movies_to_post = all_movies[start_from:]
+        
+        # ✅ নতুন: অর্ডার রিভার্স করতে চাইলে
+        if reverse_order:
+            movies_to_post = list(reversed(movies_to_post))
+            print(f"🔄 পোস্টিং অর্ডার রিভার্স করা হয়েছে: {len(movies_to_post)} টি মুভি")
+        
+        success_count = 0
+        fail_count = 0
+        
+        print(f"\n📢 নতুন চ্যানেলে পোস্ট শুরু: {len(movies_to_post)} টি মুভি")
+        
+        for i, movie in enumerate(movies_to_post, 1):
+            try:
+                import asyncio
+                await asyncio.sleep(2)  # রেট লিমিট এড়াতে
+                
+                success = await self.post_movie_to_channel(movie, bot)
+                
+                if success:
+                    success_count += 1
+                    print(f"   ✅ {i}/{len(movies_to_post)}: {movie['title'][:40]}...")
+                else:
+                    fail_count += 1
+                    print(f"   ❌ {i}/{len(movies_to_post)}: {movie['title'][:40]}...")
+                    
+            except Exception as e:
+                fail_count += 1
+                print(f"   ❌ {i}/{len(movies_to_post)}: {movie['title'][:40]}... - {e}")
+        
+        print(f"\n🎉 পোস্ট সম্পূর্ণ: {success_count} সফল, {fail_count} ব্যর্থ")
+        
+        return success_count, f"{success_count} সফল, {fail_count} ব্যর্থ"

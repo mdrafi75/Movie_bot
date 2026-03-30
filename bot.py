@@ -34,6 +34,9 @@ from context_memory import ContextMemory
 from recommendation_engine import RecommendationEngine
 import aiohttp
 import json
+# অটো রেসপন্সের জন্য ইমপোর্ট
+from interactive_buttons import create_social_links_keyboard
+from datetime import datetime
 
 # আমাদের কনফিগারেশন ইম্পোর্ট
 import config
@@ -205,11 +208,126 @@ async def handle_greeting_response(update: Update, context: ContextTypes.DEFAULT
     
     print(f"👋 গ্রিটিংস রেসপন্স দিলাম: {user.first_name} - '{update.message.text}'")
 
+
+async def bulk_post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """সব মুভি নতুন চ্যানেলে পোস্ট করার কমান্ড (শুধু এডমিন)"""
+    user = update.message.from_user
+    
+    if user.id not in config.ADMIN_USER_IDS:
+        await update.message.reply_text("⛔ শুধুমাত্র এডমিন এই কমান্ড ব্যবহার করতে পারেন।")
+        return
+    
+    start_from = 0
+    limit = None
+    reverse = False  # ✅ ডিফল্ট False
+    
+    if context.args:
+        try:
+            if len(context.args) >= 1:
+                start_from = int(context.args[0])
+            if len(context.args) >= 2:
+                limit = int(context.args[1])
+            if len(context.args) >= 3 and context.args[2].lower() == 'reverse':
+                reverse = True
+        except:
+            pass
+    
+    total_movies = cache_manager.get_movie_count()
+    
+    reverse_text = "✅ (নতুন শেষে)" if reverse else "❌ (নতুন শুরুতে)"
+    
+    confirm_msg = f"""
+⚠️ <b>বাল্ক পোস্টিং শুরু করতে যাচ্ছেন!</b>
+
+📊 <b>মোট মুভি:</b> {total_movies} টি
+📢 <b>চ্যানেল:</b> {config.CHANNEL_ID}
+🔄 <b>পোস্ট শুরু:</b> {start_from} নম্বর থেকে
+📦 <b>লিমিট:</b> {limit if limit else 'সব'}
+🔄 <b>অর্ডার:</b> {reverse_text}
+
+⏱️ <b>সময় লাগবে:</b> প্রায় {((limit if limit else total_movies) * 2) // 60} মিনিট
+
+✅ <b>পোস্ট শুরু করতে:</b> /confirm_bulk_post
+❌ <b>বাতিল করতে:</b> /cancel
+"""
+    
+    context.user_data['bulk_post_pending'] = {
+        'start_from': start_from,
+        'limit': limit,
+        'reverse': reverse
+    }
+    
+    await update.message.reply_text(confirm_msg, parse_mode='HTML')
+
+
+async def confirm_bulk_post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """বাল্ক পোস্টিং কনফার্ম করার কমান্ড"""
+    user = update.message.from_user
+    
+    if user.id not in config.ADMIN_USER_IDS:
+        return
+    
+    if 'bulk_post_pending' not in context.user_data:
+        await update.message.reply_text("❌ কোনো pending পোস্ট নেই। প্রথমে /bulk_post দিয়ে শুরু করুন।")
+        return
+    
+    pending = context.user_data['bulk_post_pending']
+    start_from = pending['start_from']
+    limit = pending['limit']
+    reverse = pending.get('reverse', False)
+    
+    reverse_text = "নতুন শেষে" if reverse else "নতুন শুরুতে"
+    
+    await update.message.reply_text(
+        f"🔄 পোস্ট শুরু হচ্ছে...\n\n"
+        f"📦 অর্ডার: {reverse_text}\n"
+        f"📊 মুভি সংখ্যা: {limit if limit else cache_manager.get_movie_count()} টি\n"
+        f"⏱️ দয়া করে অপেক্ষা করুন..."
+    )
+    
+    try:
+        from channel_poster import ChannelPoster
+        channel_poster = ChannelPoster(cache_manager)
+        
+        # ✅ রিভার্স প্যারামিটার পাস করছি
+        success, message = await channel_poster.post_all_movies_to_channel(
+            bot=context.bot,
+            start_from=start_from,
+            limit=limit,
+            reverse_order=reverse
+        )
+        
+        await update.message.reply_text(
+            f"✅ <b>বাল্ক পোস্টিং সম্পূর্ণ!</b>\n\n"
+            f"📊 <b>ফলাফল:</b> {message}\n"
+            f"📢 <b>চ্যানেল:</b> {config.CHANNEL_ID}\n\n"
+            f"🔄 অর্ডার: {reverse_text}",
+            parse_mode='HTML'
+        )
+        
+        del context.user_data['bulk_post_pending']
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ পোস্টিং এরর: {e}")
+
+
+async def cancel_bulk_post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """বাল্ক পোস্টিং বাতিল করার কমান্ড"""
+    user = update.message.from_user
+    
+    if user.id not in config.ADMIN_USER_IDS:
+        return
+    
+    if 'bulk_post_pending' in context.user_data:
+        del context.user_data['bulk_post_pending']
+        await update.message.reply_text("✅ বাল্ক পোস্টিং বাতিল করা হয়েছে।")
+    else:
+        await update.message.reply_text("❌ কোনো pending পোস্ট নেই।")
+
 # সব মেসেজ হ্যান্ডলার
-# bot.py - handle_message() ফাংশন সম্পূর্ণ রিপ্লেস করুন
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """আপডেটেড মেসেজ হ্যান্ডলার - ক্লাসিফায়ার ও কনফিডেন্স স্কোর সহ"""
+    """আপডেটেড মেসেজ হ্যান্ডলার - অটো রেসপন্স কীওয়ার্ড সহ"""
     user_message = update.message.text
     user = update.effective_user
     user_id = user.id
@@ -217,13 +335,51 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     print(f"\n📨 মেসেজ: '{user_message[:50]}...' from {user.first_name} in {chat_type}")
     
-    # ১. গ্রুপে লিংক চেক (স্প্যাম প্রটেকশন)
+    # ========== নতুন: অটো রেসপন্স কীওয়ার্ড চেক ==========
+    if chat_type in ['group', 'supergroup'] and config.AUTO_RESPONSE_SETTINGS.get('enabled', True):
+        if check_auto_response_keywords(user_message):
+            # কুলডাউন চেক
+            if is_cooldown_active(user_id):
+                print(f"⏰ কুলডাউন সক্রিয়: {user_id}, রেসপন্স দিচ্ছি না")
+            else:
+                # ইউজার মেনশন তৈরি
+                user_mention = f"@{user.username}" if user.username else user.first_name
+                
+                # মেসেজ তৈরি
+                response_text = config.AUTO_RESPONSE_MESSAGE.format(user_mention=user_mention)
+                
+                # বাটন তৈরি
+                reply_markup = create_social_links_keyboard()
+                
+                # মেসেজ পাঠানো
+                await update.message.reply_text(
+                    text=response_text,
+                    reply_markup=reply_markup,
+                    parse_mode='HTML',
+                    disable_web_page_preview=True,
+                    reply_to_message_id=update.message.message_id
+                )
+                
+                # কুলডাউন আপডেট
+                update_cooldown(user_id)
+                print(f"✅ অটো রেসপন্স পাঠানো হয়েছে: {user_id}")
+                return  # এখান থেকে রিটার্ন, নিচের কোড আর এক্সিকিউট হবে না
+    
+    # ১. গ্রুপে লিংক চেক (স্প্যাম প্রটেকশন) - শুধু সাধারণ মেম্বারদের জন্য
     if chat_type in ['group', 'supergroup']:
         if contains_any_link(user_message or ""):
+            # এডমিন চেক - খুব সাবধানে করব
             is_admin = await is_user_admin(update, context)
-            if not is_admin:
-                await mute_user_permanently(update, context)
-                return
+            
+            if is_admin:
+                # এডমিন হলে কিছু করব না, মেসেজ থাকবে
+                print(f"👑 এডমিনের লিংক মেসেজ: {user_message[:50]}... (কোনো অ্যাকশন নেই)")
+                return  # এখান থেকে রিটার্ন, নিচের কোনো কোড এক্সিকিউট হবে না
+            
+            # এডমিন না হলে (সাধারণ মেম্বার) → মিউট করব
+            print(f"🚫 সাধারণ মেম্বারের লিংক ডিটেক্ট: {user_id}")
+            await mute_user_permanently(update, context)
+            return
     
     # ২. মেসেজ ক্লাসিফাই করুন (ইম্প্রুভড ক্লাসিফায়ার ব্যবহার)
     classifier_result = await message_classifier.classify(
@@ -1298,86 +1454,100 @@ def format_movie_result(movie):
 {year_text}{quality_text}{genre_text}{rating_text}• <b>ডাউনলোড:</b> নিচের বাটনে ক্লিক করুন 👇
     """
 
-def is_website_keyword(message_text):
-    """মেসেজে ওয়েবসাইট সম্পর্কিত কীওয়ার্ড আছে কিনা চেক করবে"""
-    if not message_text:
-        return False
-        
-    message_lower = message_text.lower()
-    
-    for keyword in config.WEBSITE_KEYWORDS:
-        if keyword in message_lower:
-            print(f"🌐 ওয়েবসাইট কীওয়ার্ড ডিটেক্ট: '{keyword}'")
-            return True
-    
-    return False
-
-def create_website_keyboard():
-    """ওয়েবসাইট লিংকের জন্য বাটন তৈরি করবে"""
-    keyboard = [
-        [InlineKeyboardButton("🎬 MBBD Premium Movie Website", url=config.WEBSITE_LINKS['premium'])],
-        [InlineKeyboardButton("🔞 69 Mxxd Adult Zone (18+)", url=config.WEBSITE_LINKS['adult'])]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-async def handle_website_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ওয়েবসাইট সম্পর্কিত মেসেজের রেসপন্স দিবে"""
-    await update.message.reply_text(
-        text=config.WEBSITE_RESPONSE,
-        reply_markup=create_website_keyboard(),
-        parse_mode='HTML',
-        reply_to_message_id=update.message.message_id
-    )
 
 async def is_user_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ইউজার এডমিন কিনা চেক করবে - ফিক্সড ভার্সন"""
+    """ইউজার এডমিন কিনা চেক করবে - অ্যানোনিমাস অ্যাডমিন সাপোর্ট সহ"""
     try:
         user_id = update.effective_user.id
         chat_id = update.effective_chat.id
+        chat_type = update.effective_chat.type
         
-        # পার্সোনাল চ্যাটে এডমিন চেক করার দরকার নেই
-        if update.effective_chat.type == 'private':
-            return True  # পার্সোনাল চ্যাটে সবাইকে অ্যালাউ করবে
-            
-        # গ্রুপ/সুপারগ্রুপে এডমিন চেক করবে
-        chat_member = await context.bot.get_chat_member(chat_id, user_id)
+        # ১. অ্যানোনিমাস অ্যাডমিন চেক (টেলিগ্রাম স্পেশাল আইডি)
+        if user_id == 1087968824:  # অ্যানোনিমাস অ্যাডমিন
+            print(f"👑 অ্যানোনিমাস এডমিন ডিটেক্ট: {user_id}")
+            return True
         
-        # এডমিন স্ট্যাটাস চেক করবে
-        admin_status = ['creator', 'administrator']
-        return chat_member.status in admin_status
+        # ২. পার্সোনাল চ্যাটে সবাইকে এডমিন হিসেবে গণ্য করব
+        if chat_type == 'private':
+            return True
+        
+        # ৩. config-এর এডমিন লিস্টে আছে কিনা চেক
+        if user_id in config.ADMIN_USER_IDS:
+            print(f"👑 এডমিন (হোয়াইটলিস্ট): {user_id}")
+            return True
+        
+        # ৪. গ্রুপ/সুপারগ্রুপে এডমিন চেক
+        if chat_type in ['group', 'supergroup']:
+            try:
+                chat_member = await context.bot.get_chat_member(chat_id, user_id)
+                is_admin = chat_member.status in ['creator', 'administrator']
+                
+                if is_admin:
+                    print(f"👑 গ্রুপ এডমিন ডিটেক্ট: {user_id}")
+                else:
+                    print(f"👤 সাধারণ ইউজার: {user_id}")
+                
+                return is_admin
+                
+            except Exception as e:
+                print(f"⚠️ get_chat_member এরর: {e}")
+                return user_id in config.ADMIN_USER_IDS
+        
+        return False
         
     except Exception as e:
-        print(f"❌ এডমিন চেক এরর: {e}")
-        return False  # এরর হলে ফALSE রিটার্ন করবে
+        print(f"❌ এডমিন চেক ব্যর্থ: {e}")
+        return False
 
 async def mute_user_permanently(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ইউজারকে পারমানেন্টলি মিউট করবে"""
+    """ইউজারকে পারমানেন্টলি মিউট করবে - অ্যানোনিমাস এডমিন সুরক্ষা সহ"""
     try:
         user = update.message.from_user
+        user_id = user.id
         chat_id = update.message.chat_id
         
-        print(f"🔇 মিউট করার চেষ্টা: {user.first_name} (ID: {user.id})")
+        # 🔒 অ্যানোনিমাস এডমিন চেক
+        if user_id == 1087968824:
+            print(f"⚠️ অ্যানোনিমাস এডমিনকে মিউট করার চেষ্টা ব্লক করা হয়েছে")
+            # মেসেজ ডিলিট করব না, শুধু লগ রাখব
+            return
         
-        # ১. প্রথমে মেসেজ ডিলিট করবে
+        # 🔒 এডমিন চেক (হোয়াইটলিস্ট)
+        if user_id in config.ADMIN_USER_IDS:
+            print(f"⚠️ এডমিনকে মিউট করার চেষ্টা ব্লক: {user_id}")
+            return
+        
+        # গ্রুপ এডমিন চেক
+        try:
+            chat_member = await context.bot.get_chat_member(chat_id, user_id)
+            if chat_member.status in ['creator', 'administrator']:
+                print(f"⚠️ গ্রুপ এডমিনকে মিউট করার চেষ্টা ব্লক: {user_id}")
+                return
+        except:
+            pass
+        
+        print(f"🔇 সাধারণ ইউজার মিউট করা হচ্ছে: {user.first_name} (ID: {user_id})")
+        
+        # ১. মেসেজ ডিলিট
         await update.message.delete()
         print("✅ মেসেজ ডিলিট করা হয়েছে")
         
-        # ২. SIMPLEST VERSION - শুধু can_send_messages=False
+        # ২. মিউট
         permissions = ChatPermissions(can_send_messages=False)
         
         await context.bot.restrict_chat_member(
             chat_id=chat_id,
-            user_id=user.id,
+            user_id=user_id,
             permissions=permissions,
-            until_date=None  # পার্মানেন্টের জন্য
+            until_date=None
         )
-        print("✅ ইউজার সফলভাবে মিউট করা হয়েছে")
+        print(f"✅ ইউজার মিউট করা হয়েছে: {user_id}")
         
-        # ৩. নোটিফিকেশন মেসেজ পাঠাবে
+        # ৩. নোটিফিকেশন
         mute_notification = f"""
 🚫 <b>স্প্যামার ডিটেক্টেড!</b>
 
-❌ ইউজার: {user.first_name} (ID: {user.id})
+❌ ইউজার: {user.first_name} (ID: {user_id})
 📛 কারণ: লিংক শেয়ার করা
 ⏰ সময়: {datetime.now().strftime("%Y-%m-%d %I:%M %p")}
 
@@ -1389,12 +1559,47 @@ async def mute_user_permanently(update: Update, context: ContextTypes.DEFAULT_TY
             text=mute_notification,
             parse_mode='HTML'
         )
-        print("✅ নোটিফিকেশন মেসেজ পাঠানো হয়েছে")
         
     except Exception as e:
         print(f"❌ মিউট করতে সমস্যা: {e}")
         import traceback
         print(f"🔍 এরর ডিটেইলস: {traceback.format_exc()}")
+
+# ================== AUTO RESPONSE FUNCTIONS (NEW) ==================
+
+# ইউজারের শেষ রেসপন্স ট্র্যাক করার জন্য
+user_last_response = {}
+
+def check_auto_response_keywords(message_text):
+    """মেসেজে অটো রেসপন্স কীওয়ার্ড আছে কিনা চেক করে"""
+    if not message_text:
+        return False
+    
+    message_lower = message_text.lower()
+    
+    for category, keywords in config.AUTO_RESPONSE_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword.lower() in message_lower:
+                print(f"🔑 কীওয়ার্ড ডিটেক্ট: '{keyword}' (category: {category})")
+                return True
+    
+    return False
+
+def is_cooldown_active(user_id):
+    """ইউজারের জন্য কুলডাউন চেক করে"""
+    global user_last_response
+    
+    if user_id in user_last_response:
+        last_time = user_last_response[user_id]
+        cooldown = config.AUTO_RESPONSE_SETTINGS.get('cooldown_seconds', 30)
+        if (datetime.now() - last_time).total_seconds() < cooldown:
+            return True
+    return False
+
+def update_cooldown(user_id):
+    """ইউজারের শেষ রেসপন্স সময় আপডেট করে"""
+    global user_last_response
+    user_last_response[user_id] = datetime.now()
 
 def contains_any_link(text):
     """যেকোনো লিংক চেক করবে"""
@@ -2278,7 +2483,12 @@ def main():
     
     # মেসেজ হ্যান্ডলার
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
+
+    # বাল্ক পোস্টিং কমান্ড
+    app.add_handler(CommandHandler("bulk_post", bulk_post_command))
+    app.add_handler(CommandHandler("confirm_bulk_post", confirm_bulk_post_command))
+    app.add_handler(CommandHandler("cancel", cancel_bulk_post_command))
+        
     # এরর হ্যান্ডলার
     app.add_error_handler(error_handler)
     
