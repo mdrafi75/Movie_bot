@@ -380,6 +380,51 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print(f"🚫 সাধারণ মেম্বারের লিংক ডিটেক্ট: {user_id}")
             await mute_user_permanently(update, context)
             return
+        
+
+        # ========== ডাউনলোড গাইড চেক (AI Agent দিয়ে) ==========
+        if local_ai_agent:
+            try:
+                intent_data = await local_ai_agent.detect_intent(user_message, user_id)
+                if intent_data and intent_data.get('intent') == 'download_guide' and intent_data.get('confidence', 0) > 0.7:
+                    user_mention = f"@{user.username}" if user.username else user.first_name
+                    
+                    # ১. ভিডিও পোস্টটি ফরওয়ার্ড করব
+                    try:
+                        await context.bot.forward_message(
+                            chat_id=update.effective_chat.id,
+                            from_chat_id='mbbdhelp',  # চ্যানেলের ইউজারনাম
+                            message_id=2,  # পোস্ট নম্বর
+                            reply_to_message_id=update.message.message_id
+                        )
+                        print(f"✅ ডাউনলোড গাইড ভিডিও ফরওয়ার্ড করা হয়েছে: {user_id}")
+                    except Exception as e:
+                        print(f"❌ ফরওয়ার্ড করতে সমস্যা: {e}")
+                        # ফরওয়ার্ড ব্যর্থ হলে লিংক আকারে পাঠাব
+                        await update.message.reply_text(
+                            f"🎬 {user_mention} 👋\n\n"
+                            f"ডাউনলোড গাইড ভিডিও লিংক:\n{config.DOWNLOAD_GUIDE_LINK}\n\n"
+                            f"💡 লিংকে ক্লিক করে ভিডিওটি দেখুন।",
+                            parse_mode='HTML',
+                            reply_to_message_id=update.message.message_id
+                        )
+                        return
+                    
+                    # ২. ফরওয়ার্ড করার পর মেনশন সহ টেক্সট মেসেজ
+                    await update.message.reply_text(
+                        f"🎬 <b>{user_mention}</b> 👋\n\n"
+                        f"👆 উপরের ভিডিওটি দেখুন, স্টেপ বাই স্টেপ ফলো করুন।\n\n"
+                        f"💡 <b>টিপস:</b>\n"
+                        f"• ভিডিও পজ করে ধাপগুলো বুঝে নিন\n"
+                        f"• কোনো সমস্যা হলে এডমিনকে জানান",
+                        parse_mode='HTML',
+                        reply_to_message_id=update.message.message_id
+                    )
+                    
+                    print(f"✅ ডাউনলোড গাইড পাঠানো হয়েছে: {user_id}")
+                    return
+            except Exception as e:
+                print(f"⚠️ ডাউনলোড গাইড চেক এরর: {e}")
     
     # ২. মেসেজ ক্লাসিফাই করুন (ইম্প্রুভড ক্লাসিফায়ার ব্যবহার)
     classifier_result = await message_classifier.classify(

@@ -13,7 +13,7 @@ class LocalAIAgent:
         self.learning = learning_system
         self.cache_file = "data/movies_cache.json"
         
-        async def detect_intent(self, message, user_id=None):
+    async def detect_intent(self, message, user_id=None):
             """মেসেজের ইন্টেন্ট ডিটেক্ট করে (ASYNC ভার্সন)"""
             message = message.lower().strip()
             
@@ -23,7 +23,8 @@ class LocalAIAgent:
                 'help': 0.0,
                 'movie_request': 0.0,
                 'movie_search': 0.0,
-                'conversation': 0.0
+                'conversation': 0.0,
+                'download_guide': 0.0
             }
             
             # ১. গ্রিটিংস চেক
@@ -50,6 +51,42 @@ class LocalAIAgent:
             if 1 <= len(words) <= 4 and not any(c in message for c in ['?', 'কি', 'কে']):
                 scores['movie_search'] = 0.7
             
+            # ========== ডাউনলোড গাইড চেক ==========
+            download_guide_patterns = [
+                # বাংলা প্যাটার্ন
+                r'ডাউনলোড.*পারছি না', r'ডাউনলোড.*করতে পারছি না',
+                r'কিভাবে ডাউনলোড', r'কীভাবে ডাউনলোড',
+                r'ডাউনলোড.*শিখি', r'ডাউনলোড.*টিউটোরিয়াল',
+                r'গাইড ভিডিও', r'টিউটোরিয়াল ভিডিও',
+                r'ডাউনলোড.*বুঝতে পারছি না', r'ডাউনলোড.*সমস্যা',
+                r'লিংক.*খুলছে না', r'ডাউনলোড.*হচ্ছে না',
+                r'কাজ করছে না', r'দেখাচ্ছে না',
+                
+                # ইংরেজি প্যাটার্ন
+                r'how to download', r'download guide',
+                r'tutorial', r'help.*download',
+                r'can\'t download', r'download.*not working',
+                r'link.*not working', r'download.*problem'
+            ]
+
+            for pattern in download_guide_patterns:
+                if re.search(pattern, message, re.IGNORECASE):
+                    scores['download_guide'] = 0.95
+                    print(f"🎬 ডাউনলোড গাইড ডিটেক্ট: {pattern}")
+                    break
+
+            # শব্দ ভিত্তিক চেক (সহজ কীওয়ার্ড)
+            download_keywords = [
+                'ডাউনলোড', 'টিউটোরিয়াল', 'গাইড', 'download', 'tutorial', 'guide',
+                'কিভাবে', 'কীভাবে', 'how to', 'কাজ করছে না', 'খুলছে না'
+            ]
+
+            keyword_matches = sum(1 for kw in download_keywords if kw in message)
+            if keyword_matches >= 2:  # দুই বা তার বেশি কীওয়ার্ড
+                if scores['download_guide'] < 0.85:
+                    scores['download_guide'] = 0.85
+                    print(f"🎬 ডাউনলোড গাইড ডিটেক্ট (কীওয়ার্ড): {keyword_matches} টি ম্যাচ")
+
             # ৫. কনভারসেশন চেক
             if '?' in message or any(q in message for q in ['কি', 'কে', 'কেন', 'কখন']):
                 scores['conversation'] = 0.8
