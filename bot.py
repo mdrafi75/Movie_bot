@@ -2488,9 +2488,10 @@ async def handle_confirmation_no(update: Update, context: ContextTypes.DEFAULT_T
         await query.message.edit_text("❌ রিকোয়েস্ট নিতে সমস্যা হয়েছে। পরে চেষ্টা করুন।")
     
 
-# ================== MAIN FUNCTION (ONLY WEBHOOK FOR RENDER) ==================
+
+# ================== MAIN FUNCTION (POLLING MODE FOR RENDER) ==================
 def main():
-    """Render-এর জন্য শুধু Webhook মোডে বট চালাবে"""
+    """Render-এর জন্য Polling মোডে বট চালাবে (সরল ও স্থিতিশীল)"""
     print("🤖 বট শুরু হচ্ছে...")
     
     # সার্ভিসেস ইনিশিয়ালাইজ
@@ -2532,45 +2533,9 @@ def main():
     # এরর হ্যান্ডলার
     app.add_error_handler(error_handler)
     
-    # ========== শুধু ওয়েবহুক মোড (Render-এর জন্য) ==========
-    PORT = int(os.environ.get('PORT', 10000))
-    webhook_url = f"https://movie-bot-bg7m.onrender.com/{config.BOT_TOKEN}"
-    
-    print(f"🌐 Webhook URL: {webhook_url}")
-    print(f"🔧 Using PORT: {PORT}")
-    
-    # ওয়েবহুক চালানোর ফাংশন (পোলিং-এর কোনো উল্লেখ নেই)
-    async def run_webhook():
-        # ১. আগের কোনো ওয়েবহুক ডিলিট করে শুরু
-        await app.bot.delete_webhook(drop_pending_updates=True)
-        # ২. নতুন ওয়েবহুক সেট
-        await app.bot.set_webhook(
-            url=webhook_url,
-            drop_pending_updates=True,
-            allowed_updates=["message", "callback_query", "chat_member"]
-        )
-        print("✅ Webhook সেট করা হয়েছে")
-        
-        # ৩. ওয়েবহুক সার্ভার শুরু
-        await app.updater.start_webhook(
-            listen="0.0.0.0",
-            port=PORT,
-            url_path=config.BOT_TOKEN,
-            webhook_url=webhook_url,
-            drop_pending_updates=True
-        )
-        print("✅ Webhook সার্ভার চলছে")
-        
-        # ৪. বট চালু রাখতে infinite wait
-        await asyncio.Event().wait()
-    
-    # চালানো
-    try:
-        asyncio.run(run_webhook())
-    except KeyboardInterrupt:
-        print("🛑 বট বন্ধ করা হচ্ছে")
-    except Exception as e:
-        print(f"❌ Webhook মোডে ব্যর্থ: {e}")
+    # ========== Polling মোডে রান ==========
+    print("✅ বট পোলিং মোডে রানিং...")
+    app.run_polling()
 
 
 if __name__ == "__main__":
