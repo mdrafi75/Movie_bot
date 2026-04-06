@@ -2488,10 +2488,9 @@ async def handle_confirmation_no(update: Update, context: ContextTypes.DEFAULT_T
         await query.message.edit_text("❌ রিকোয়েস্ট নিতে সমস্যা হয়েছে। পরে চেষ্টা করুন।")
     
 
-# মেইন ফাংশন
-# ================== MAIN FUNCTION (FIXED FOR RENDER) ==================
+# ================== MAIN FUNCTION (ONLY WEBHOOK FOR RENDER) ==================
 def main():
-    """Render-এর জন্য Webhook মোডে বট চালাবে"""
+    """Render-এর জন্য শুধু Webhook মোডে বট চালাবে"""
     print("🤖 বট শুরু হচ্ছে...")
     
     # সার্ভিসেস ইনিশিয়ালাইজ
@@ -2533,18 +2532,18 @@ def main():
     # এরর হ্যান্ডলার
     app.add_error_handler(error_handler)
     
-    # ========== Render-এর জন্য Webhook সেটআপ ==========
+    # ========== শুধু ওয়েবহুক মোড (Render-এর জন্য) ==========
     PORT = int(os.environ.get('PORT', 10000))
     webhook_url = f"https://movie-bot-bg7m.onrender.com/{config.BOT_TOKEN}"
     
     print(f"🌐 Webhook URL: {webhook_url}")
     print(f"🔧 Using PORT: {PORT}")
     
-    # Webhook রান করার ফাংশন
+    # ওয়েবহুক চালানোর ফাংশন (পোলিং-এর কোনো উল্লেখ নেই)
     async def run_webhook():
-        # ১. আগের webhook ডিলিট
+        # ১. আগের কোনো ওয়েবহুক ডিলিট করে শুরু
         await app.bot.delete_webhook(drop_pending_updates=True)
-        # ২. নতুন webhook সেট
+        # ২. নতুন ওয়েবহুক সেট
         await app.bot.set_webhook(
             url=webhook_url,
             drop_pending_updates=True,
@@ -2552,7 +2551,7 @@ def main():
         )
         print("✅ Webhook সেট করা হয়েছে")
         
-        # ৩. Webhook সার্ভার শুরু
+        # ৩. ওয়েবহুক সার্ভার শুরু
         await app.updater.start_webhook(
             listen="0.0.0.0",
             port=PORT,
@@ -2571,9 +2570,7 @@ def main():
     except KeyboardInterrupt:
         print("🛑 বট বন্ধ করা হচ্ছে")
     except Exception as e:
-        print(f"❌ Webhook এরর: {e}")
-        print("🔄 Polling মোডে চালানোর চেষ্টা...")
-        app.run_polling()
+        print(f"❌ Webhook মোডে ব্যর্থ: {e}")
 
 
 if __name__ == "__main__":
