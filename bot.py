@@ -2489,8 +2489,9 @@ async def handle_confirmation_no(update: Update, context: ContextTypes.DEFAULT_T
     
 
 # মেইন ফাংশন
+# ================== MAIN FUNCTION (FIXED FOR RENDER) ==================
 def main():
-    """বট শুরু করবে - অটো রিফ্রেশার সহ"""
+    """Render-এর জন্য Webhook মোডে বট চালাবে"""
     print("🤖 বট শুরু হচ্ছে...")
     
     # সার্ভিসেস ইনিশিয়ালাইজ
@@ -2499,16 +2500,14 @@ def main():
     # বট অ্যাপ্লিকেশন তৈরি
     app = Application.builder().token(config.BOT_TOKEN).build()
     
+    # ========== সব হ্যান্ডলার এখানে যোগ করুন ==========
     # কমান্ড হ্যান্ডলার
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("search", search_command))
     app.add_handler(CommandHandler("testimage", test_image_system))
     app.add_handler(CommandHandler("refresh_status", refresh_status_command))
-    app.add_handler(CommandHandler("refresh", refresh_command)) 
-
-
-    # ✅ নতুন: রিকোয়েস্ট সিস্টেট কমান্ড
+    app.add_handler(CommandHandler("refresh", refresh_command))
     app.add_handler(CommandHandler("request", request_command))
     app.add_handler(CommandHandler("req", request_command))
     app.add_handler(CommandHandler("myrequests", my_requests_command))
@@ -2516,6 +2515,9 @@ def main():
     app.add_handler(CommandHandler("requests", admin_requests_dashboard))
     app.add_handler(CommandHandler("cleanup", cleanup_command))
     app.add_handler(CommandHandler("force_refresh", force_refresh_command))
+    app.add_handler(CommandHandler("bulk_post", bulk_post_command))
+    app.add_handler(CommandHandler("confirm_bulk_post", confirm_bulk_post_command))
+    app.add_handler(CommandHandler("cancel", cancel_bulk_post_command))
     
     # ক্যালব্যাক হ্যান্ডলার
     app.add_handler(CallbackQueryHandler(button_callback_handler))
@@ -2524,122 +2526,55 @@ def main():
     # গ্রুপে নতুন মেম্বার ওয়েলকাম
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
     app.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
-
     
-    # মেসেজ হ্যান্ডলার
+    # মেসেজ হ্যান্ডলার (সবশেষে)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    # বাল্ক পোস্টিং কমান্ড
-    app.add_handler(CommandHandler("bulk_post", bulk_post_command))
-    app.add_handler(CommandHandler("confirm_bulk_post", confirm_bulk_post_command))
-    app.add_handler(CommandHandler("cancel", cancel_bulk_post_command))
-        
+    
     # এরর হ্যান্ডলার
     app.add_error_handler(error_handler)
     
-    # বট শুরু এবং অটো রিফ্রেশ শুরু
-    print("✅ বট রানিং...")
-    
-    # ✅ নতুন: অটো রিফ্রেশ শুরু করুন
-    async def start_background_tasks():
-        await auto_refresher.start_auto_refresh(app)
-    
-    # ব্যাকগ্রাউন্ড টাস্ক শুরু করুন
-    import asyncio
-    loop = asyncio.get_event_loop()
-    loop.create_task(start_background_tasks())
-
-    # ✅ বট শুরু হওয়ার সাথে সাথে এডমিনদের ড্যাশবোর্ড তৈরি
-    async def create_initial_dashboard():
-        try:
-            import config
-            from datetime import datetime
-            
-            for admin_id in config.ADMIN_USER_IDS:
-                try:
-                    welcome_msg = f"""
-🤖 <b>বট আপডেট ড্যাশবোর্ড</b>
-
-⏰ <b>শুরু সময়:</b> {datetime.now().strftime("%d %b %Y, %I:%M %p")}
-📊 <b>মোট মুভি:</b> {cache_manager.get_movie_count()} টি
-🔄 <b>অটো রিফ্রেশ:</b> প্রতি ৩০ মিনিট পর
-📅 <b>ক্যাশ রিফ্রেশ:</b> /force_refresh কমান্ডে
-
-⚡ <b>বট স্ট্যাটাস:</b> সক্রিয় ✅
-🎯 <b>সার্ভিস:</b> প্রস্তুত
-"""
-                    
-                    message = await app.bot.send_message(
-                        chat_id=admin_id,
-                        text=welcome_msg,
-                        parse_mode='HTML'
-                    )
-                    
-                    # message_id সংরক্ষণ করব
-                    if hasattr(auto_refresher, 'admin_dashboard_ids'):
-                        auto_refresher.admin_dashboard_ids[admin_id] = message.message_id
-                    
-                    print(f"✅ প্রাথমিক ড্যাশবোর্ড তৈরি হয়েছে: {admin_id}")
-                    
-                except Exception as e:
-                    print(f"⚠️ এডমিন ড্যাশবোর্ড তৈরি এরর: {admin_id} - {e}")
-        
-        except Exception as e:
-            print(f"❌ ড্যাশবোর্ড ইনিশিয়ালাইজ এরর: {e}")
-            
-    
-    # ৩ সেকেন্ড পর ড্যাশবোর্ড তৈরি করব
-    async def delayed_dashboard():
-        await asyncio.sleep(3)
-        await create_initial_dashboard()
-    
-    loop.create_task(delayed_dashboard())
-    
-    app.run_polling()
-
-    # ✅ Webhook মোডে রান করব (Render-এর জন্য ভালো)
+    # ========== Render-এর জন্য Webhook সেটআপ ==========
     PORT = int(os.environ.get('PORT', 10000))
-    
-    # ✅ Webhook URL (আপনার Render app name দিয়ে replace করুন)
-    webhook_url = f"https://movie-bot-qv5s.onrender.com/{config.BOT_TOKEN}"
+    webhook_url = f"https://movie-bot-bg7m.onrender.com/{config.BOT_TOKEN}"
     
     print(f"🌐 Webhook URL: {webhook_url}")
     print(f"🔧 Using PORT: {PORT}")
     
+    # Webhook রান করার ফাংশন
     async def run_webhook():
-        try:
-            # ১. আগের webhook ডিলিট করব
-            await app.bot.delete_webhook(drop_pending_updates=True)
-            
-            # ২. Webhook সেট করব
-            await app.bot.set_webhook(
-                url=webhook_url,
-                drop_pending_updates=True
-            )
-            
-            # ৩. Webhook server শুরু করব
-            await app.updater.start_webhook(
-                listen="0.0.0.0",
-                port=PORT,
-                url_path=config.BOT_TOKEN,
-                webhook_url=webhook_url,
-                drop_pending_updates=True
-            )
-            
-            print("✅ Webhook started successfully!")
-            print("🤖 Bot is now running with Webhook mode")
-            
-            # ৪. Bot running রাখব
-            await asyncio.Event().wait()
-            
-        except Exception as e:
-            print(f"❌ Webhook error: {e}")
-            # Fallback: Polling mode
-            print("🔄 Falling back to polling mode...")
-            await app.run_polling()
+        # ১. আগের webhook ডিলিট
+        await app.bot.delete_webhook(drop_pending_updates=True)
+        # ২. নতুন webhook সেট
+        await app.bot.set_webhook(
+            url=webhook_url,
+            drop_pending_updates=True,
+            allowed_updates=["message", "callback_query", "chat_member"]
+        )
+        print("✅ Webhook সেট করা হয়েছে")
+        
+        # ৩. Webhook সার্ভার শুরু
+        await app.updater.start_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            url_path=config.BOT_TOKEN,
+            webhook_url=webhook_url,
+            drop_pending_updates=True
+        )
+        print("✅ Webhook সার্ভার চলছে")
+        
+        # ৪. বট চালু রাখতে infinite wait
+        await asyncio.Event().wait()
     
-    # Run the bot
-    asyncio.run(run_webhook())
-    
+    # চালানো
+    try:
+        asyncio.run(run_webhook())
+    except KeyboardInterrupt:
+        print("🛑 বট বন্ধ করা হচ্ছে")
+    except Exception as e:
+        print(f"❌ Webhook এরর: {e}")
+        print("🔄 Polling মোডে চালানোর চেষ্টা...")
+        app.run_polling()
+
+
 if __name__ == "__main__":
     main()
