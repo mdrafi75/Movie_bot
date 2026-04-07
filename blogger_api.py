@@ -224,8 +224,11 @@ class BloggerAPI:
     
     
     def extract_detail_link(self, movie_block):
-        """DETAIL_LINK extract করবে এবং ডেস্কটপ ভিউ প্যারামিটার যোগ করবে"""
+        """DETAIL_LINK extract করবে এবং ডেস্কটপ ভার্সন নিশ্চিত করবে"""
         try:
+            if not movie_block:
+                return None
+                
             if 'DETAIL_LINK:' in movie_block:
                 start_idx = movie_block.find('DETAIL_LINK:') + len('DETAIL_LINK:')
                 remaining = movie_block[start_idx:].strip()
@@ -233,39 +236,17 @@ class BloggerAPI:
                 if lines:
                     link = lines[0].strip()
                     if link and link.startswith('http'):
-                        # ✅ নতুন: ডেস্কটপ ভিউ প্যারামিটার যোগ
-                        link = self.add_desktop_param(link)
-                        print(f"    ✅ DETAIL_LINK (ডেস্কটপ): {link[:80]}...")
+                        # ✅ এখানে ম্যাজিক: লিংকের শেষে ?m=0 যোগ করুন
+                        if '?m=0' not in link:
+                            if '?' in link:
+                                link = link + '&m=0'
+                            else:
+                                link = link + '?m=0'
+                        print(f"    ✅ ডেস্কটপ লিংক: {link[:80]}...")
                         return link
+            
             return None
         except Exception as e:
             print(f"    ❌ Link extract error: {e}")
             return None
-        
-    def add_desktop_param(self, link):
-        """ডিটেইল লিংকে &m=0 প্যারামিটার যোগ করবে"""
-        if not link:
-            return link
-        
-        # ইতিমধ্যে &m=0 বা ?m=0 থাকলে কিছু করব না
-        if '&m=0' in link or '?m=0' in link:
-            return link
-        
-        # যদি লিংকে ? থাকে (অর্থাৎ প্যারামিটার আছে)
-        if '?' in link:
-            # ?m=1 থাকলে সরিয়ে &m=0 যোগ করব
-            if '?m=1' in link:
-                link = link.replace('?m=1', '')
-            # অন্যান্য প্যারামিটারের সাথে &m=0 যোগ
-            if '?' in link and not link.endswith('&'):
-                link = link + '&m=0'
-            else:
-                link = link + 'm=0'
-        else:
-            # কোনো প্যারামিটার না থাকলে ?m=0 যোগ
-            link = link + '?m=0'
-        
-        print(f"   🔄 ডেস্কটপ লিংক তৈরি: {link[:80]}...")
-        return link
-        
 

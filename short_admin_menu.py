@@ -1,4 +1,4 @@
-# short_admin_menu.py - আপডেটেড ভার্সন
+# short_admin_menu.py - আপডেটেড ভার্সন (reshare কমান্ড যোগ করা হয়েছে)
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 
 class ShortAdminMenu:
@@ -9,7 +9,7 @@ class ShortAdminMenu:
             '/cache_status': '📊 ক্যাশের মুভি সংখ্যা ও আপডেট সময় দেখায়',
             '/refresh_status': '⏰ অটো রিফ্রেশার স্ট্যাটাস দেখায়',
             '/cleanup': '🗑️ ১৫+ দিন পুরানো সফল রিকোয়েস্ট ডিলিট করে',
-            '/bulk_post': '📢 নতুন চ্যানেলে সব মুভি পোস্ট করে (বাল্ক পোস্টিং)',
+            '/reshare': '📤 ব্লগারের পুরনো পোস্ট চ্যানেলে পুনরায় পোস্ট করে (১-১০০)',
             '/start': '🚀 বট ওয়েলকাম মেসেজ ও মেনু দেখায়'
         }
     
@@ -17,7 +17,8 @@ class ShortAdminMenu:
         """ফিক্সড এডমিন কীবোর্ড"""
         keyboard = [
             [KeyboardButton("🤖 এডমিন কমান্ড লিস্ট")],
-            [KeyboardButton("📊 ক্যাশ স্ট্যাটাস"), KeyboardButton("🔄 রিফ্রেশ")]
+            [KeyboardButton("📊 ক্যাশ স্ট্যাটাস"), KeyboardButton("🔄 রিফ্রেশ")],
+            [KeyboardButton("📤 রিশেয়ার")]  # ✅ নতুন বাটন যোগ করা হয়েছে
         ]
         return ReplyKeyboardMarkup(keyboard, resize_keyboard=True) 
     
@@ -31,6 +32,11 @@ class ShortAdminMenu:
         text = "🤖 <b>এডমিন কমান্ড লিস্ট</b>\n\n"
         for cmd, desc in self.commands_info.items():
             text += f"• <code>{cmd}</code> - {desc}\n"
+        text += "\n📝 <b>/reshare ব্যবহারের নিয়ম:</b>\n"
+        text += "   <code>/reshare 20</code> - শেষ ২০টি পোস্ট\n"
+        text += "   <code>/reshare 50</code> - শেষ ৫০টি পোস্ট\n"
+        text += "   <code>/reshare 100</code> - শেষ ১০০টি পোস্ট\n"
+        text += "   <code>/reshare all</code> - সব পোস্ট\n"
         text += "\n📝 <i>কমান্ড টাইপ করুন অথবা উপরের বাটন ব্যবহার করুন</i>"
         return text
     
@@ -48,7 +54,7 @@ class ShortAdminMenu:
                 '/cache_status': '📊',
                 '/refresh_status': '⏰',
                 '/cleanup': '🗑️',
-                '/bulk_post': '📢',
+                '/reshare': '📤',  # ✅ নতুন এমোজি
                 '/start': '🚀'
             }
             emoji = emoji_map.get(cmd, '🔹')

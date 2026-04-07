@@ -171,28 +171,6 @@ class CacheManager:
             error_msg = f"রিফ্রেশ ব্যর্থ: {str(e)}"
             print(f"❌ {error_msg}")
             return False, error_msg
-        
-    def fix_all_links_to_desktop(self):
-        """ক্যাশের সব লিংককে ডেস্কটপ ভিউতে কনভার্ট করবে"""
-        fixed_count = 0
-        
-        for movie in self.cache_data["movies"]:
-            if movie.get('detail_link'):
-                old_link = movie['detail_link']
-                # ইতিমধ্যে &m=0 থাকলে skip
-                if '&m=0' not in old_link and '?m=0' not in old_link:
-                    if '?' in old_link:
-                        new_link = old_link + '&m=0'
-                    else:
-                        new_link = old_link + '?m=0'
-                    movie['detail_link'] = new_link
-                    fixed_count += 1
-        
-        if fixed_count > 0:
-            self.save_cache()
-            print(f"✅ {fixed_count} টি মুভির লিংক আপডেট করা হয়েছে")
-        
-        return fixed_count
 
 # টেস্ট করার জন্য
 if __name__ == "__main__":
